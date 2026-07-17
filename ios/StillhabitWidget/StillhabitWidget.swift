@@ -16,6 +16,8 @@ nonisolated struct HabitSnapshot: Identifiable {
     let title: String
     let colorHex: String
     let isDoneToday: Bool
+    /// Consecutive completed days ending today (or yesterday if today is pending).
+    let streak: Int
     /// Trailing 7 days, oldest first (today last).
     let trail: [Bool]
 }
@@ -33,9 +35,9 @@ nonisolated struct HabitEntry: TimelineEntry {
     static let placeholder = HabitEntry(
         date: Date(),
         habits: [
-            HabitSnapshot(id: UUID(), title: "Morning stretch", colorHex: "8A9A86", isDoneToday: true, trail: [true, false, true, true, true, false, true]),
-            HabitSnapshot(id: UUID(), title: "Read ten pages", colorHex: "C8826D", isDoneToday: false, trail: [false, true, true, false, true, true, false]),
-            HabitSnapshot(id: UUID(), title: "Evening walk", colorHex: "7A8B99", isDoneToday: false, trail: [true, true, false, true, false, true, false]),
+            HabitSnapshot(id: UUID(), title: "Morning stretch", colorHex: "8A9A86", isDoneToday: true, streak: 4, trail: [true, false, true, true, true, false, true]),
+            HabitSnapshot(id: UUID(), title: "Read ten pages", colorHex: "C8826D", isDoneToday: false, streak: 2, trail: [false, true, true, false, true, true, false]),
+            HabitSnapshot(id: UUID(), title: "Evening walk", colorHex: "7A8B99", isDoneToday: false, streak: 0, trail: [true, true, false, true, false, true, false]),
         ],
         totalCount: 3,
         completedCount: 1
@@ -51,6 +53,7 @@ nonisolated struct HabitEntry: TimelineEntry {
                 title: habit.title,
                 colorHex: habit.colorHex,
                 isDoneToday: habit.isCompleted(on: today),
+                streak: habit.currentStreak,
                 trail: habit.completionTrail(days: 7)
             )
         }

@@ -47,6 +47,26 @@ extension Habit {
         }
     }
 
+    /// Consecutive completed days ending today (or yesterday, if today is still pending).
+    var currentStreak: Int {
+        let calendar = Calendar.current
+        let completedDays = Set(completedDates.map { calendar.startOfDay(for: $0) })
+        var cursor = calendar.startOfDay(for: Date())
+
+        if !completedDays.contains(cursor) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor) else { return 0 }
+            cursor = yesterday
+        }
+
+        var streak = 0
+        while completedDays.contains(cursor) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
+        }
+        return streak
+    }
+
     /// Completion flags for the trailing `days` calendar days, oldest first (today last).
     func completionTrail(days: Int) -> [Bool] {
         let calendar = Calendar.current

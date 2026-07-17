@@ -108,10 +108,34 @@ struct HabitDotRow: View {
                 .buttonStyle(.plain)
                 .invalidatableContent()
                 .accessibilityLabel(habit.title)
-                .accessibilityValue(habit.isDoneToday ? "Completed today" : "Not completed today")
+                .accessibilityValue(accessibilityValue)
+
+                streakBadge
             }
         }
         .frame(height: 26)
+    }
+
+    /// Fixed-width streak count beside the completion circle — no layout shift on toggle.
+    private var streakBadge: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("\(habit.streak)")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .foregroundStyle(habit.streak > 0 ? accent : WidgetDesign.textSecondary.opacity(0.45))
+        .frame(width: 28, alignment: .leading)
+        .invalidatableContent()
+        .accessibilityHidden(true)
+    }
+
+    private var accessibilityValue: String {
+        let completion = habit.isDoneToday ? "Completed today" : "Not completed today"
+        let streak = habit.streak == 1 ? "1 day streak" : "\(habit.streak) day streak"
+        return "\(completion), \(streak)"
     }
 
     /// Completion flag for one of the 6 days preceding today (oldest first).
