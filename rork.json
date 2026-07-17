@@ -1,0 +1,13 @@
+{
+  "$schema": "https://rork.com/schema/rork.json",
+  "apps": [
+    {
+      "name": "Stillhabit",
+      "path": "ios",
+      "framework": "swift",
+      "settings": {
+        "iosBundleId": "com.atkinsmedia.stillhabit"
+      }
+    }
+  ]
+}
