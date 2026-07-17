@@ -65,7 +65,7 @@ struct SmallHabitsView: View {
     private var actionSlot: some View {
         if entry.totalCount == 0 {
             Text("Begin in the app")
-                .font(.system(size: 11))
+                .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(WidgetDesign.textSecondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)

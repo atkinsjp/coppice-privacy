@@ -12,20 +12,52 @@ import WidgetKit
 
 enum SharedStore {
     /// App Group shared between the app and the widget extension.
-    /// Keep in sync with `WidgetStore.appGroupID` in the widget target.
-    static let appGroupID = "group.app.rork.ruluo6lxh53x1n5ogz4q1"
+    /// Must match both targets' entitlements and `WidgetStore.appGroupID`.
+    static let appGroupID = "group.com.atkinsmedia.stillhabit"
 
     /// Builds the shared ModelContainer, falling back to a local store
     /// if the group container is unavailable (e.g. missing entitlement).
     static func makeContainer() -> ModelContainer {
         let groupConfiguration = ModelConfiguration(groupContainer: .identifier(appGroupID))
         if let container = try? ModelContainer(for: Habit.self, configurations: groupConfiguration) {
+            migrateLegacyStoreIfNeeded(into: container)
             return container
         }
         do {
             return try ModelContainer(for: Habit.self)
         } catch {
             fatalError("Unable to create any ModelContainer: \(error)")
+        }
+    }
+
+    /// One-time migration: earlier builds fell back to the app-private default
+    /// store, so habits created there are invisible to the widget. If the shared
+    /// group store is empty but the legacy local store has habits, copy them over.
+    private static func migrateLegacyStoreIfNeeded(into container: ModelContainer) {
+        let context = ModelContext(container)
+        let existingCount = (try? context.fetchCount(FetchDescriptor<Habit>())) ?? 0
+        guard existingCount == 0 else { return }
+
+        guard let legacyContainer = try? ModelContainer(for: Habit.self) else { return }
+        let legacyContext = ModelContext(legacyContainer)
+        guard let legacyHabits = try? legacyContext.fetch(FetchDescriptor<Habit>()),
+              !legacyHabits.isEmpty else { return }
+
+        for legacy in legacyHabits {
+            let copy = Habit(title: legacy.title, colorHex: legacy.colorHex)
+            copy.id = legacy.id
+            copy.createdAt = legacy.createdAt
+            copy.completedDates = legacy.completedDates
+            copy.isArchived = legacy.isArchived
+            context.insert(copy)
+        }
+
+        do {
+            try context.save()
+            try? legacyContext.delete(model: Habit.self)
+            try? legacyContext.save()
+        } catch {
+            print("SharedStore: legacy migration failed — \(error.localizedDescription)")
         }
     }
 

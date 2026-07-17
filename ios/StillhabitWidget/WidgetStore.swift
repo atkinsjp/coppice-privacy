@@ -9,8 +9,8 @@ import Foundation
 import SwiftData
 
 enum WidgetStore {
-    /// Keep in sync with `SharedStore.appGroupID` in the app target.
-    static let appGroupID = "group.app.rork.ruluo6lxh53x1n5ogz4q1"
+    /// Must match both targets' entitlements and `SharedStore.appGroupID` in the app target.
+    static let appGroupID = "group.com.atkinsmedia.stillhabit"
 
     static func makeContainer() throws -> ModelContainer {
         let configuration = ModelConfiguration(groupContainer: .identifier(appGroupID))

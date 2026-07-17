@@ -37,7 +37,7 @@ struct MediumHabitsView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("TODAY")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
                 .tracking(1.4)
                 .foregroundStyle(WidgetDesign.textSecondary)
 
@@ -57,7 +57,7 @@ struct MediumHabitsView: View {
                 .font(.system(size: 18, weight: .light))
                 .foregroundStyle(WidgetDesign.sage)
             Text("Begin a habit in Stillhabit")
-                .font(.system(size: 12))
+                .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(WidgetDesign.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -74,7 +74,7 @@ struct HabitDotRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(habit.title)
-                .font(.system(size: 14, weight: .regular))
+                .font(.system(size: 14, weight: .regular, design: .rounded))
                 .foregroundStyle(WidgetDesign.textPrimary)
                 .lineLimit(1)
 
