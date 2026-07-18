@@ -11,17 +11,46 @@ import SwiftData
 import WidgetKit
 
 enum SharedStore {
-    /// App Group shared between the app and the widget extension.
-    /// Must match both targets' entitlements and `WidgetStore.appGroupID`.
-    static let appGroupID = "group.com.atkinsmedia.stillhabit"
+    /// App Group candidates shared between the app and the widget extension, in
+    /// preference order. The custom group is used on real devices; the Rork
+    /// project group is the one provisioned on the cloud simulator. Must match
+    /// both targets' entitlements and `WidgetStore.appGroupIDCandidates`.
+    static let appGroupIDCandidates = [
+        "group.com.atkinsmedia.stillhabit",
+        "group.app.rork.ruluo6lxh53x1n5ogz4q1",
+    ]
+
+    /// First app group whose container is actually writable in this environment.
+    /// The cloud simulator sandbox denies writes inside non-provisioned group
+    /// containers, so each candidate is probed before being trusted.
+    static func resolvedAppGroupID() -> String? {
+        let fileManager = FileManager.default
+        for groupID in appGroupIDCandidates {
+            guard let containerURL = fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupID) else { continue }
+            let supportURL = containerURL.appendingPathComponent("Library/Application Support", isDirectory: true)
+            do {
+                try fileManager.createDirectory(at: supportURL, withIntermediateDirectories: true)
+            } catch {
+                continue
+            }
+            let probeURL = supportURL.appendingPathComponent(".stillhabit-write-probe")
+            if fileManager.createFile(atPath: probeURL.path, contents: Data()) {
+                try? fileManager.removeItem(at: probeURL)
+                return groupID
+            }
+        }
+        return nil
+    }
 
     /// Builds the shared ModelContainer, falling back to a local store
-    /// if the group container is unavailable (e.g. missing entitlement).
+    /// if no group container is writable (e.g. missing entitlement).
     static func makeContainer() -> ModelContainer {
-        let groupConfiguration = ModelConfiguration(groupContainer: .identifier(appGroupID))
-        if let container = try? ModelContainer(for: Habit.self, configurations: groupConfiguration) {
-            migrateLegacyStoreIfNeeded(into: container)
-            return container
+        if let groupID = resolvedAppGroupID() {
+            let groupConfiguration = ModelConfiguration(groupContainer: .identifier(groupID))
+            if let container = try? ModelContainer(for: Habit.self, configurations: groupConfiguration) {
+                migrateLegacyStoreIfNeeded(into: container)
+                return container
+            }
         }
         do {
             return try ModelContainer(for: Habit.self)
