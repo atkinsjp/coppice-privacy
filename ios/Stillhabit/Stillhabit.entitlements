@@ -2,10 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>group.com.atkinsmedia.stillhabit</string>
-        <string>group.app.rork.ruluo6lxh53x1n5ogz4q1</string>
-    </array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.rork.ruluo6lxh53x1n5ogz4q1</string>
+	</array>
 </dict>
 </plist>
