@@ -43,12 +43,38 @@ struct HabitRowView: View {
     /// Drives the breathing border while the timer runs.
     @State private var borderPulse = false
 
+    // Why-anchor reveal state.
+    /// For numeric habits: transiently true after a quick-add tap so the
+    /// `whyString` surfaces as a reflective moment, then fades on its own.
+    @State private var numericWhyRevealed = false
+    /// Monotonic token used to cancel any pending auto-hide of the numeric
+    /// why-anchor — each tap increments it, and only the latest-scheduled
+    /// hide task is allowed to clear the flag.
+    @State private var numericWhyHideToken = 0
+
     /// Whether the focus timer is actively running. Derived from the
     /// persisted `habit.timerStart` so the state survives navigation away
     /// from the view, the phone locking, and the app being killed — when the
     /// card re-appears it reads as running again if the habit still has a
     /// live start anchor.
     private var isTimerRunning: Bool { habit.timerStart != nil }
+
+    /// Whether the `whyString` should be visible right now. Each habit type
+    /// has its own trigger: check-in reveals on press-and-hold (the moment
+    /// before completion), duration reveals while the focus timer is expanded,
+    /// and numeric reveals transiently after a quick-add tap. A nil/empty
+    /// `whyString` never reveals anything.
+    private var isWhyRevealed: Bool {
+        guard habit.hasWhyAnchor else { return false }
+        switch habitType {
+        case .checkIn:
+            return isPressing
+        case .duration:
+            return isTimerExpanded
+        case .numeric:
+            return numericWhyRevealed
+        }
+    }
 
     /// Distance the card must travel rightward to count as a completion swipe.
     private let completionThreshold: CGFloat = 88
@@ -59,6 +85,15 @@ struct HabitRowView: View {
     private var isDoneToday: Bool { habit.isCompleted(on: Date()) }
 
     private var habitType: HabitType { habit.type }
+
+    /// Style for the reflective `whyString` line — SF Pro Text, 13pt, italic,
+    /// in a soft slate-blue shade that reads as intimate without competing
+    /// with the habit title or the accent fill.
+    private var whyAnchorColor: Color {
+        isEffectivelyDone
+            ? DesignSystem.Colors.onAccent.opacity(0.78)
+            : DesignSystem.Colors.slateBlue
+    }
 
     /// Whether this card should render in its completed/faded state. For
     /// `.weeklyTarget` habits, the week's target being met counts as done
@@ -76,6 +111,13 @@ struct HabitRowView: View {
 
     /// The one spring used for every card transformation.
     private var cardSpring: Animation { .spring(response: 0.35, dampingFraction: 0.7) }
+
+    /// Vertical spacing inside the card. Gives the why-anchor reveal and the
+    /// expanded countdown clock room to breathe when present, collapses to a
+    /// tight single row at rest.
+    private var cardSpacing: CGFloat {
+        (isTimerExpanded || isWhyRevealed) ? 14 : 0
+    }
 
     private var currentOffset: CGFloat {
         (isRevealed ? -actionsWidth : 0) + dragOffset
@@ -122,11 +164,16 @@ struct HabitRowView: View {
     // MARK: - Card
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: isTimerExpanded ? 14 : 0) {
+        VStack(alignment: .leading, spacing: cardSpacing) {
             HStack(spacing: 0) {
                 leadingContent
                 Spacer(minLength: 12)
                 trailingControl
+            }
+
+            if isWhyRevealed, let whyText = habit.whyAnchorText {
+                whyAnchorView(whyText)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             if isTimerExpanded, case .duration = habitType {
@@ -159,6 +206,7 @@ struct HabitRowView: View {
         .animation(cardSpring, value: isEffectivelyDone)
         .animation(cardSpring, value: isTimerExpanded)
         .animation(cardSpring, value: habit.todayProgress)
+        .animation(.easeInOut(duration: 0.4), value: isWhyRevealed)
         .contentShape(.rect)
         .onTapGesture {
             if isRevealed {
@@ -195,6 +243,23 @@ struct HabitRowView: View {
         case .duration:
             return "\(base), \(habit.todayProgressLabel)"
         }
+    }
+
+    // MARK: - Why anchor
+
+    /// The reflective intentionality line — SF Pro Text, 13pt italic, in a
+    /// soft slate-blue that reads as intimate without competing with the
+    /// title or the accent fill. Sits right above the completion control as a
+    /// quiet moment of grounding right before the user logs progress.
+    private func whyAnchorView(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .regular))
+            .italic()
+            .foregroundStyle(whyAnchorColor)
+            .lineLimit(3)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Your why: \(text)")
     }
 
     // MARK: - Leading content (shared)
@@ -323,6 +388,31 @@ struct HabitRowView: View {
             waveTick += 1
         }
         saveAndNotify()
+        revealNumericWhyAnchor()
+    }
+
+    /// Surfaces the `whyString` as a reflective moment after a numeric
+    /// quick-add tap, then quietly fades it back out after ~2.5s so the
+    /// card's resting state stays uncluttered. Each tap cancels any pending
+    /// auto-hide so repeated taps keep the anchor visible without flickering.
+    private func revealNumericWhyAnchor() {
+        guard habit.hasWhyAnchor, !isEffectivelyDone else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            numericWhyRevealed = true
+        }
+        numericWhyHideToken += 1
+        let token = numericWhyHideToken
+        Task {
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard token == numericWhyHideToken, !isEffectivelyDone else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    if token == numericWhyHideToken {
+                        numericWhyRevealed = false
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Duration focus timer

@@ -76,7 +76,8 @@ enum SharedStore {
                 title: legacy.title,
                 colorHex: legacy.colorHex,
                 cadence: legacy.cadence,
-                type: legacy.type
+                type: legacy.type,
+                whyString: legacy.whyString
             )
             copy.id = legacy.id
             copy.createdAt = legacy.createdAt

@@ -17,6 +17,8 @@ struct AddHabitView: View {
     @State private var selectedWeekdays: Set<Int> = []
     @State private var weeklyGoal: Int = 3
     @State private var type: HabitType = .checkIn
+    /// Optional intentionality anchor — the user's "why" for this habit.
+    @State private var whyString: String = ""
     @FocusState private var isTitleFocused: Bool
 
     private var trimmedTitle: String {
@@ -46,6 +48,25 @@ struct AddHabitView: View {
                     .onSubmit {
                         if !trimmedTitle.isEmpty { save() }
                     }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("The Why (Optional)")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .padding(.leading, 4)
+
+                    TextField("e.g., To wake up clear and rested for my family.", text: $whyString, axis: .vertical)
+                        .font(.system(size: 15, weight: .regular, design: .serif))
+                        .italic()
+                        .foregroundStyle(DesignSystem.Colors.textPrimary.opacity(0.85))
+                        .lineLimit(1...3)
+                        .padding(16)
+                        .background(DesignSystem.Colors.card, in: .rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: DesignSystem.Layout.fieldCornerRadius)
+                                .strokeBorder(DesignSystem.Colors.textSecondary.opacity(0.18), lineWidth: 0.5)
+                        }
+                }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 10)], alignment: .leading, spacing: 10) {
                     ForEach(availablePalette) { habitColor in
@@ -85,7 +106,7 @@ struct AddHabitView: View {
             .padding(.bottom, 16)
         }
         .scrollDismissesKeyboard(.interactively)
-        .presentationDetents([.height(store.isPremium ? 696 : 636)])
+        .presentationDetents([.height(store.isPremium ? 760 : 700)])
         .presentationBackground(DesignSystem.Colors.background)
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
@@ -131,7 +152,8 @@ struct AddHabitView: View {
             title: trimmedTitle,
             colorHex: selectedHex,
             cadence: resolvedCadence,
-            type: resolvedType
+            type: resolvedType,
+            whyString: whyString
         )
         modelContext.insert(habit)
         SharedStore.notifyWidgets()

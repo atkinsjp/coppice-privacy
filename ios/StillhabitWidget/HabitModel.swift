@@ -54,12 +54,15 @@ final class Habit {
     /// Wall-clock anchor for an actively running `.duration` focus timer.
     /// Must stay schema-identical with the app target.
     var timerStart: Date?
+    /// Optional intentionality anchor. Must stay schema-identical with the app target.
+    var whyString: String?
 
     init(
         title: String,
         colorHex: String,
         cadence: HabitCadence = .daily,
-        type: HabitType = .checkIn
+        type: HabitType = .checkIn,
+        whyString: String? = nil
     ) {
         self.id = UUID()
         self.title = title
@@ -71,6 +74,7 @@ final class Habit {
         self.type = type
         self.logs = []
         self.timerStart = nil
+        self.whyString = whyString
     }
 }
 

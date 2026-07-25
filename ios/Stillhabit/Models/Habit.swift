@@ -87,12 +87,17 @@ final class Habit {
     /// the phone is locked, or the app is killed and relaunched — progress is
     /// always `Date().timeIntervalSince(timerStart)` plus accumulated `logs`.
     var timerStart: Date?
+    /// Optional intentionality anchor — a short, user-authored reminder of
+    /// *why* this habit matters, revealed as a reflective moment on the card
+    /// right before the user logs progress. nil keeps the resting card clean.
+    var whyString: String?
 
     init(
         title: String,
         colorHex: String,
         cadence: HabitCadence = .daily,
-        type: HabitType = .checkIn
+        type: HabitType = .checkIn,
+        whyString: String? = nil
     ) {
         self.id = UUID()
         self.title = title
@@ -104,6 +109,9 @@ final class Habit {
         self.type = type
         self.logs = []
         self.timerStart = nil
+        self.whyString = whyString?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? whyString?.trimmingCharacters(in: .whitespacesAndNewlines)
+            : nil
     }
 }
 
@@ -134,6 +142,22 @@ extension Habit {
     /// Convenience for whether the habit is scheduled for today.
     var isScheduledForToday: Bool {
         isScheduled(on: Date())
+    }
+
+    /// Whether this habit carries a non-empty intentionality anchor (the
+    /// "why"). Cards use this to decide whether to reserve space for the
+    /// reflective reveal at all.
+    var hasWhyAnchor: Bool {
+        guard let whyString, !whyString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    /// The trimmed intentionality anchor, or nil if none.
+    var whyAnchorText: String? {
+        guard hasWhyAnchor else { return nil }
+        return whyString?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Number of completions logged so far in the current calendar week (Sunday→Saturday).
