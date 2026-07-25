@@ -43,50 +43,50 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ZStack {
-            WavyBackgroundView()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                header
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    header
+                if habits.isEmpty {
+                    emptyState
+                } else {
+                    progressSection
 
-                    if habits.isEmpty {
-                        emptyState
-                    } else {
-                        progressSection
-
-                        LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
-                            ForEach(habits) { habit in
-                                HabitRowView(
-                                    habit: habit,
-                                    onOpen: {
-                                        selectedHabit = habit
-                                    },
-                                    onRest: {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                            habit.isArchived = true
-                                        }
-                                        SharedStore.notifyWidgets()
-                                    },
-                                    onDelete: {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                            modelContext.delete(habit)
-                                        }
-                                        SharedStore.notifyWidgets()
+                    LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
+                        ForEach(habits) { habit in
+                            HabitRowView(
+                                habit: habit,
+                                onOpen: {
+                                    selectedHabit = habit
+                                },
+                                onRest: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                        habit.isArchived = true
                                     }
-                                )
-                            }
+                                    SharedStore.notifyWidgets()
+                                },
+                                onDelete: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                        modelContext.delete(habit)
+                                    }
+                                    SharedStore.notifyWidgets()
+                                }
+                            )
                         }
                     }
-
-                    if !restingHabits.isEmpty {
-                        restingLink
-                    }
                 }
-                .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
-                .padding(.top, 12)
-                .padding(.bottom, 96)
+
+                if !restingHabits.isEmpty {
+                    restingLink
+                }
             }
+            .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 96)
+        }
+        .background {
+            WavyBackgroundView()
+                .allowsHitTesting(false)
         }
         .overlay(alignment: .bottom) {
             if allComplete {
@@ -238,7 +238,7 @@ struct TodayView: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
             Button {
-                isAddingHabit = true
+                requestNewHabit()
             } label: {
                 Text("Begin your first habit")
                     .font(.system(size: 15, weight: .medium, design: .rounded))

@@ -90,12 +90,6 @@ private struct TactileWaveBody: View {
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
             .overlay(TactileRippleOverlay(ripples: ripples, accent: accent))
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        touchLocation = value.location
-                    }
-            )
             .onChange(of: configuration.isPressed) { wasPressed, isPressed in
                 guard wasPressed, !isPressed else { return }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -135,12 +129,6 @@ struct StillTactileWaveModifier<Trigger: Equatable>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .overlay(TactileRippleOverlay(ripples: ripples, accent: accent))
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        touchLocation = value.location
-                    }
-            )
             .onChange(of: trigger) { _, _ in
                 if playsHaptic {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
