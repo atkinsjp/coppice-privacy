@@ -16,18 +16,36 @@ import SwiftUI
 /// GPU-accelerated, and the palette is kept close to the warm ivory /
 /// charcoal base so foreground text remains perfectly legible.
 struct WavyBackgroundView: View {
+    /// When true, a warm golden/ochre glow gently pulses and expands outward
+    /// over ~3 seconds — the visual half of the "Still Moment" reward that
+    /// fires when every scheduled habit for the day is complete. The glow
+    /// lives at the background layer (behind all content) so it never
+    /// interferes with touch targets.
+    var warmGlow: Bool = false
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        meshBackground
+            .ignoresSafeArea()
+            .overlay {
+                if warmGlow {
+                    WarmGlowPulse(reduceMotion: reduceMotion)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var meshBackground: some View {
         if reduceMotion {
             meshGradient(at: 0)
-                .ignoresSafeArea()
         } else {
             TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
                 meshGradient(at: timeline.date.timeIntervalSinceReferenceDate)
             }
-            .ignoresSafeArea()
         }
     }
 
@@ -118,4 +136,58 @@ struct WavyBackgroundView: View {
 #Preview("Dark") {
     WavyBackgroundView()
         .preferredColorScheme(.dark)
+}
+
+// MARK: - Warm glow pulse
+
+/// The visual "Still Moment" — a soft radial wash of warm golden/ochre light
+/// that blooms outward from the center over ~3 seconds, then fades back to
+/// let the earthy mesh return to its resting state. Rendered inside the
+/// background layer so it stays behind all foreground content and never
+/// captures touches.
+private struct WarmGlowPulse: View {
+    let reduceMotion: Bool
+
+    @State private var scale: CGFloat = 0.4
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        RadialGradient(
+            colors: [
+                Color(hex: "E8B574").opacity(0.9),
+                Color(hex: "D8B08C").opacity(0.45),
+                .clear
+            ],
+            center: .center,
+            startRadius: 0,
+            endRadius: 340
+        )
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .onAppear { animate() }
+    }
+
+    private func animate() {
+        guard !reduceMotion else {
+            // Respect Reduce Motion: a single calm bloom, no expansive sweep.
+            withAnimation(.easeInOut(duration: 1.2)) {
+                opacity = 0.5
+                scale = 1.4
+            }
+            return
+        }
+        // Expand outward over the full ~3s while opacity pulses up then fades.
+        withAnimation(.easeOut(duration: 3.2)) {
+            scale = 2.8
+        }
+        withAnimation(.easeIn(duration: 0.9)) {
+            opacity = 0.72
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(0.95))
+            withAnimation(.easeOut(duration: 2.25)) {
+                opacity = 0
+            }
+        }
+    }
 }

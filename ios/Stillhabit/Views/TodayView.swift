@@ -33,6 +33,17 @@ struct TodayView: View {
     @State private var selectedHabit: Habit?
     @State private var ambientPlayer = AmbientSoundPlayer()
 
+    /// The "Still Moment" audio + visual reward. Plays once when the day's
+    /// last scheduled habit flips to complete, and again only if the user
+    /// later un-completes and re-completes everything.
+    @State private var stillMomentService = StillMomentService()
+    /// True while the warm-glow visual celebration is on screen. Drives the
+    /// animated background and the centered completion message.
+    @State private var isStillMomentActive = false
+    /// The previous value of `allComplete` — used to detect the rising edge
+    /// (false → true) that triggers the Still Moment.
+    @State private var wasAllComplete = false
+
     private var completedCount: Int {
         habits.filter { $0.isCompleted(on: Date()) || $0.weeklyTargetMet }.count
     }
@@ -80,6 +91,7 @@ struct TodayView: View {
                                     SharedStore.notifyWidgets()
                                 }
                             )
+                            .opacity(isStillMomentActive ? 0 : 1)
                         }
                     }
                 }
@@ -92,16 +104,19 @@ struct TodayView: View {
             .padding(.top, 12)
             .padding(.bottom, 96)
         }
+        .scrollDisabled(isStillMomentActive)
         .background {
-            WavyBackgroundView()
+            WavyBackgroundView(warmGlow: isStillMomentActive)
                 .allowsHitTesting(false)
         }
-        .overlay(alignment: .bottom) {
-            if allComplete {
-                peaceMessage
+        .overlay {
+            if isStillMomentActive {
+                stillMomentMessage
+                    .allowsHitTesting(false)
             }
         }
-        .animation(.easeInOut(duration: 0.6), value: allComplete)
+        .animation(.easeInOut(duration: 0.8), value: allComplete)
+        .animation(.easeInOut(duration: 0.8), value: isStillMomentActive)
         .sheet(isPresented: $isAddingHabit) {
             AddHabitView()
         }
@@ -116,6 +131,11 @@ struct TodayView: View {
         }
         .onAppear {
             ambientPlayer.startIfEnabled()
+            wasAllComplete = allComplete
+        }
+        .onChange(of: allComplete) { oldValue, newValue in
+            guard !oldValue, newValue else { return }
+            triggerStillMoment()
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
@@ -263,17 +283,60 @@ struct TodayView: View {
         .padding(.top, 120)
     }
 
-    // MARK: - Peace message
+    // MARK: - Still Moment
 
-    private var peaceMessage: some View {
-        Text("Everything is done for today. Enjoy your peace.")
-            .font(DesignSystem.Typography.caption)
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
-            .padding(.bottom, 20)
-            .transition(.opacity)
-            .accessibilityAddTraits(.isStaticText)
+    /// Fires the full "Still Moment" reward the instant the day crosses from
+    /// incomplete to 100% complete: a soft singing-bowl chime, a warm
+    /// golden/ochre glow blooming outward across the background, a calm
+    /// double-tap heartbeat haptic, and the centered completion message.
+    /// The celebration resolves itself after ~4 seconds — the chime and glow
+    /// fade on their own, and the message and cards return as the visual
+    /// settles back to the resting earthy state.
+    private func triggerStillMoment() {
+        stillMomentService.playChime()
+        playHeartbeatHaptic()
+        withAnimation(.easeInOut(duration: 0.8)) {
+            isStillMomentActive = true
+        }
+        Task { [self] in
+            try? await Task.sleep(for: .seconds(4))
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 1.2)) {
+                    isStillMomentActive = false
+                }
+            }
+        }
+    }
+
+    /// A soft, low-frequency heartbeat: two slow `.soft` impacts spaced ~0.25s
+    /// apart, mimicking the physical calm of a deep heartbeat rather than a
+    /// jarring notification buzz.
+    private func playHeartbeatHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .soft)
+        generator.prepare()
+        generator.impactOccurred(intensity: 0.9)
+        Task { [generator] in
+            try? await Task.sleep(for: .milliseconds(250))
+            generator.impactOccurred(intensity: 0.6)
+        }
+    }
+
+    /// The centered, reflective completion message that fades in over the
+    /// background glow once the day's rituals are all done.
+    private var stillMomentMessage: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(Color(hex: "D8B08C"))
+
+            Text("Everything is still.\nYour daily rituals are complete.")
+                .font(.system(size: 19, weight: .medium, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Resting link
