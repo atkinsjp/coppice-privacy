@@ -100,24 +100,83 @@ extension Habit {
         }
     }
 
-    /// Consecutive completed days ending today (or yesterday, if today is still pending).
+    /// Schedule-aware streak matching the app's `Habit.currentStreak`.
+    /// `completedDates` is never modified when cadence changes, so streaks
+    /// recompute against the new schedule going forward.
     var currentStreak: Int {
         let calendar = Calendar.current
         let completedDays = Set(completedDates.map { calendar.startOfDay(for: $0) })
-        var cursor = calendar.startOfDay(for: Date())
 
-        if !completedDays.contains(cursor) {
-            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor) else { return 0 }
-            cursor = yesterday
-        }
+        switch cadence {
+        case .daily:
+            var cursor = calendar.startOfDay(for: Date())
+            if !completedDays.contains(cursor) {
+                guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor) else { return 0 }
+                cursor = yesterday
+            }
+            var streak = 0
+            while completedDays.contains(cursor) {
+                streak += 1
+                guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+                cursor = previous
+            }
+            return streak
 
-        var streak = 0
-        while completedDays.contains(cursor) {
-            streak += 1
-            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
-            cursor = previous
+        case .specificDays(let weekdays):
+            guard !weekdays.isEmpty else { return 0 }
+            var cursor = calendar.startOfDay(for: Date())
+            if !weekdays.contains(calendar.component(.weekday, from: cursor)) {
+                guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { return 0 }
+                cursor = prev
+            }
+            if !completedDays.contains(cursor) {
+                guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { return 0 }
+                cursor = prev
+            }
+            var streak = 0
+            while completedDays.contains(cursor) {
+                streak += 1
+                guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { break }
+                cursor = prev
+            }
+            return streak
+
+        case .weeklyTarget(let target):
+            var cursor = Date()
+            if completionsThisWeek(on: cursor) < target {
+                guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { return 0 }
+                cursor = lastWeek
+            }
+            var streak = 0
+            while completionsThisWeek(on: cursor) >= target {
+                streak += 1
+                guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { break }
+                cursor = lastWeek
+            }
+            return streak
         }
-        return streak
+    }
+
+    /// The next scheduled day strictly after the given day, or nil.
+    private func nextScheduledDay(from date: Date, weekdays: [Int], calendar: Calendar) -> Date? {
+        var cursor = calendar.startOfDay(for: date)
+        for _ in 0..<8 {
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { return nil }
+            if weekdays.contains(calendar.component(.weekday, from: next)) { return next }
+            cursor = next
+        }
+        return nil
+    }
+
+    /// The previous scheduled day strictly before the given day, or nil.
+    private func previousScheduledDay(from date: Date, weekdays: [Int], calendar: Calendar) -> Date? {
+        var cursor = calendar.startOfDay(for: date)
+        for _ in 0..<8 {
+            guard let prev = calendar.date(byAdding: .day, value: -1, to: cursor) else { return nil }
+            if weekdays.contains(calendar.component(.weekday, from: prev)) { return prev }
+            cursor = prev
+        }
+        return nil
     }
 
     /// Completion flags for the trailing `days` calendar days, oldest first (today last).

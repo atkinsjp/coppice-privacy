@@ -20,6 +20,13 @@ struct HabitDetailView: View {
     @State private var displayedTotal: Int = 0
     @State private var hasAnimatedIn: Bool = false
 
+    /// Local editing state for the cadence. Seeded from the habit on appear;
+    /// committed back to the habit (preserving all `completedDates`) whenever
+    /// the user changes the schedule, so streaks recompute live.
+    @State private var editingCadence: HabitCadence = .daily
+    @State private var editingWeekdays: Set<Int> = []
+    @State private var editingWeeklyGoal: Int = 3
+
     private let dayCount = 90
     private let columns = 15
 
@@ -49,6 +56,8 @@ struct HabitDetailView: View {
                     heatmap
 
                     statsCapsule
+
+                    scheduleSection
                 }
                 .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
                 .padding(.top, 28)
@@ -57,6 +66,7 @@ struct HabitDetailView: View {
         }
         .overlay(alignment: .topTrailing) {
             Button {
+                commitCadenceIfNeeded()
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
@@ -73,7 +83,10 @@ struct HabitDetailView: View {
             .accessibilityLabel("Close")
         }
         .presentationBackground(DesignSystem.Colors.background)
-        .onAppear(perform: animateStatsIn)
+        .onAppear {
+            seedCadenceEditor()
+            animateStatsIn()
+        }
     }
 
     // MARK: - Background
@@ -108,6 +121,65 @@ struct HabitDetailView: View {
             Text(sinceLine)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+    }
+
+    // MARK: - Schedule editor
+
+    /// Inline cadence editor. Changing the schedule never touches
+    /// `completedDates` — it only updates how completions are interpreted, so
+    /// all historical progress is preserved and current/best streaks
+    /// recalculate against the new schedule going forward.
+    private var scheduleSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("SCHEDULE")
+                    .font(DesignSystem.Typography.overline)
+                    .tracking(1.6)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Spacer()
+
+                Text(habit.cadenceSummary)
+                    .font(DesignSystem.Typography.smallNumber)
+                    .foregroundStyle(accent)
+                    .animation(.easeOut(duration: 0.2), value: editingCadence)
+            }
+
+            CadencePicker(
+                cadence: $editingCadence,
+                selectedWeekdays: $editingWeekdays,
+                weeklyGoal: $editingWeeklyGoal,
+                accent: accent,
+                label: "Edit frequency"
+            )
+        }
+        .padding(20)
+        .background(DesignSystem.Colors.card, in: .rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
+                .strokeBorder(accent.opacity(0.18), lineWidth: 0.5)
+        }
+        .softShadow()
+        .onChange(of: editingCadence) { _, _ in commitCadenceIfNeeded() }
+        .onChange(of: editingWeekdays) { _, _ in commitCadenceIfNeeded() }
+        .onChange(of: editingWeeklyGoal) { _, _ in commitCadenceIfNeeded() }
+    }
+
+    /// Seeds the local editor state from the habit's stored cadence so the
+    /// picker shows the current schedule before the user touches anything.
+    private func seedCadenceEditor() {
+        editingCadence = habit.cadence
+        switch habit.cadence {
+        case .daily:
+            editingWeekdays = []
+            editingWeeklyGoal = 3
+        case .specificDays(let weekdays):
+            editingWeekdays = Set(weekdays)
+            editingWeeklyGoal = 3
+        case .weeklyTarget(let target):
+            editingWeekdays = []
+            editingWeeklyGoal = target
         }
     }
 
@@ -166,7 +238,13 @@ struct HabitDetailView: View {
         }
         try? modelContext.save()
         SharedStore.notifyWidgets()
+        refreshStreaks()
+    }
 
+    /// Recomputes the displayed streak/total numbers from the habit's current
+    /// cadence and completion history. Used after both a completion toggle and
+    /// a cadence change so the three numbers always reflect the new schedule.
+    private func refreshStreaks() {
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             displayedCurrentStreak = habit.currentStreak
             displayedBestStreak = habit.bestStreak
@@ -229,6 +307,35 @@ struct HabitDetailView: View {
                 displayedTotal = targets.2
             }
         }
+    }
+
+    // MARK: - Cadence commit
+
+    /// Resolves the local editor state into a final `HabitCadence` (empty
+    /// specific-days falls back to `.daily`, the weekly goal is clamped) and,
+    /// only if the schedule actually changed, writes it back to the habit —
+    /// **without touching `completedDates`** — then saves, reloads widgets, and
+    /// refreshes the displayed streaks so the new schedule is reflected
+    /// immediately while all past completions are preserved. Called live as
+    /// the user edits (so streaks recompute dynamically) and again on close.
+    private func commitCadenceIfNeeded() {
+        let resolved: HabitCadence
+        switch editingCadence {
+        case .daily:
+            resolved = .daily
+        case .specificDays:
+            let sorted = editingWeekdays.sorted()
+            resolved = sorted.isEmpty ? .daily : .specificDays(sorted)
+        case .weeklyTarget:
+            resolved = .weeklyTarget(max(1, min(editingWeeklyGoal, 6)))
+        }
+
+        guard resolved != habit.cadence else { return }
+
+        habit.cadence = resolved
+        try? modelContext.save()
+        SharedStore.notifyWidgets()
+        refreshStreaks()
     }
 }
 

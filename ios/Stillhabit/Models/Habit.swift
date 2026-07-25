@@ -122,51 +122,182 @@ extension Habit {
         return completedDates.first { calendar.isDate($0, inSameDayAs: date) }
     }
 
-    /// Consecutive completed days ending today (or yesterday, if today is still pending).
+    /// Consecutive completed scheduled days ending today (or the most recent
+    /// scheduled day, if today is still pending). Schedule-aware: for
+    /// `.specificDays`, unscheduled days are simply skipped rather than
+    /// breaking the streak; for `.weeklyTarget`, a "streak" is consecutive
+    /// weeks in which the target was met. `completedDates` is never modified
+    /// when cadence changes, so all historical progress is preserved and
+    /// streaks recompute against the new schedule going forward.
     var currentStreak: Int {
         let calendar = Calendar.current
         let completedDays = Set(completedDates.map { calendar.startOfDay(for: $0) })
-        var cursor = calendar.startOfDay(for: Date())
 
-        if !completedDays.contains(cursor) {
-            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor) else { return 0 }
-            cursor = yesterday
-        }
+        switch cadence {
+        case .daily:
+            var cursor = calendar.startOfDay(for: Date())
+            if !completedDays.contains(cursor) {
+                guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor) else { return 0 }
+                cursor = yesterday
+            }
+            var streak = 0
+            while completedDays.contains(cursor) {
+                streak += 1
+                guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+                cursor = previous
+            }
+            return streak
 
-        var streak = 0
-        while completedDays.contains(cursor) {
-            streak += 1
-            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
-            cursor = previous
+        case .specificDays(let weekdays):
+            guard !weekdays.isEmpty else { return 0 }
+            var cursor = calendar.startOfDay(for: Date())
+            if !weekdays.contains(calendar.component(.weekday, from: cursor)) {
+                guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { return 0 }
+                cursor = prev
+            }
+            if !completedDays.contains(cursor) {
+                guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { return 0 }
+                cursor = prev
+            }
+            var streak = 0
+            while completedDays.contains(cursor) {
+                streak += 1
+                guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { break }
+                cursor = prev
+            }
+            return streak
+
+        case .weeklyTarget(let target):
+            var cursor = Date()
+            if completionsThisWeek(on: cursor) < target {
+                guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { return 0 }
+                cursor = lastWeek
+            }
+            var streak = 0
+            while completionsThisWeek(on: cursor) >= target {
+                streak += 1
+                guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { break }
+                cursor = lastWeek
+            }
+            return streak
         }
-        return streak
     }
 
-    /// Longest run of consecutive completed days, ever.
+    /// Longest run of consecutive completed scheduled days, ever. Schedule-aware:
+    /// for `.specificDays`, runs are counted across scheduled days only; for
+    /// `.weeklyTarget`, runs are consecutive target-metting weeks.
     var bestStreak: Int {
         let calendar = Calendar.current
-        let days = Set(completedDates.map { calendar.startOfDay(for: $0) }).sorted()
-        var best = 0
-        var run = 0
-        var previous: Date?
-        for day in days {
-            if let previous,
-               let expected = calendar.date(byAdding: .day, value: 1, to: previous),
-               calendar.isDate(expected, inSameDayAs: day) {
-                run += 1
-            } else {
-                run = 1
+
+        switch cadence {
+        case .daily:
+            let days = Set(completedDates.map { calendar.startOfDay(for: $0) }).sorted()
+            var best = 0
+            var run = 0
+            var previous: Date?
+            for day in days {
+                if let previous,
+                   let expected = calendar.date(byAdding: .day, value: 1, to: previous),
+                   calendar.isDate(expected, inSameDayAs: day) {
+                    run += 1
+                } else {
+                    run = 1
+                }
+                best = max(best, run)
+                previous = day
             }
-            best = max(best, run)
-            previous = day
+            return best
+
+        case .specificDays(let weekdays):
+            guard !weekdays.isEmpty else { return 0 }
+            let completedScheduled = Set(completedDates.map { calendar.startOfDay(for: $0) })
+                .filter { weekdays.contains(calendar.component(.weekday, from: $0)) }
+                .sorted()
+            var best = 0
+            var run = 0
+            var previous: Date?
+            for day in completedScheduled {
+                if let previous,
+                   let expected = nextScheduledDay(from: previous, weekdays: weekdays, calendar: calendar),
+                   calendar.isDate(expected, inSameDayAs: day) {
+                    run += 1
+                } else {
+                    run = 1
+                }
+                best = max(best, run)
+                previous = day
+            }
+            return best
+
+        case .weeklyTarget(let target):
+            guard let startWeek = calendar.dateInterval(of: .weekOfYear, for: createdAt)?.start,
+                  let thisWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start else { return 0 }
+            var best = 0
+            var run = 0
+            var cursor = startWeek
+            while cursor <= thisWeek {
+                if completionsThisWeek(on: cursor) >= target {
+                    run += 1
+                    best = max(best, run)
+                } else {
+                    run = 0
+                }
+                guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
+                cursor = next
+            }
+            return best
         }
-        return best
     }
 
     /// Total distinct days this habit was completed.
     var totalCompletions: Int {
         let calendar = Calendar.current
         return Set(completedDates.map { calendar.startOfDay(for: $0) }).count
+    }
+
+    /// A short, human-readable summary of the cadence, e.g. "Every day",
+    /// "Mon, Wed, Fri", or "3 times a week". Used in the detail view.
+    var cadenceSummary: String {
+        switch cadence {
+        case .daily: return "Every day"
+        case .specificDays(let weekdays):
+            return Habit.weekdaySummary(weekdays)
+        case .weeklyTarget(let target):
+            return "\(target) times a week"
+        }
+    }
+
+    /// Comma-separated short weekday names for the given weekday indexes (1...7).
+    static func weekdaySummary(_ weekdays: [Int]) -> String {
+        guard !weekdays.isEmpty else { return "No days" }
+        let symbols = Calendar.current.shortWeekdaySymbols
+        let names = weekdays.sorted().compactMap { index -> String? in
+            guard index >= 1, index <= symbols.count else { return nil }
+            return symbols[index - 1]
+        }
+        return names.joined(separator: ", ")
+    }
+
+    /// The next scheduled day strictly after the given day, or nil.
+    private func nextScheduledDay(from date: Date, weekdays: [Int], calendar: Calendar) -> Date? {
+        var cursor = calendar.startOfDay(for: date)
+        for _ in 0..<8 {
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { return nil }
+            if weekdays.contains(calendar.component(.weekday, from: next)) { return next }
+            cursor = next
+        }
+        return nil
+    }
+
+    /// The previous scheduled day strictly before the given day, or nil.
+    private func previousScheduledDay(from date: Date, weekdays: [Int], calendar: Calendar) -> Date? {
+        var cursor = calendar.startOfDay(for: date)
+        for _ in 0..<8 {
+            guard let prev = calendar.date(byAdding: .day, value: -1, to: cursor) else { return nil }
+            if weekdays.contains(calendar.component(.weekday, from: prev)) { return prev }
+            cursor = prev
+        }
+        return nil
     }
 
     /// Completion flags for the trailing `days` calendar days, oldest first (today last).
