@@ -14,6 +14,12 @@
 //  interrupting other audio. Nothing here is loud or harsh — the whole point
 //  is a gentle, grounding resolution to the day.
 //
+//  The AVAudioEngine + player node are created lazily on the first play and
+//  never touch AVFoundation during SwiftUI view initialization. All playback
+//  is guarded on the engine actually running, so a failure to start the
+//  engine (simulator audio session contention, sandbox denials, etc.) degrades
+//  to silence instead of aborting.
+//
 
 import Foundation
 import AVFoundation
@@ -21,8 +27,8 @@ import AVFoundation
 /// Synthesizes and plays the soft "Still Moment" singing-bowl chime.
 final class StillMomentService {
 
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private var engine: AVAudioEngine?
+    private var player: AVAudioPlayerNode?
     private let format: AVAudioFormat = AVAudioFormat(
         standardFormatWithSampleRate: StillMomentService.sampleRate,
         channels: 1
@@ -35,25 +41,43 @@ final class StillMomentService {
     private var isEngineStarted = false
 
     init() {
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
+        // Only the PCM buffer is rendered up front — it's cheap and pure.
+        // The AVAudioEngine graph is deferred to the first play so no
+        // AVFoundation resources are held (or initialized) during SwiftUI
+        // view construction.
         chimeBuffer = synthesizeChime()
     }
 
+    deinit {
+        // Best-effort teardown. Tearing down on the main thread is safe;
+        // never touch AVAudioEngine off-main.
+        if let player, player.isPlaying {
+            player.stop()
+        }
+        if let engine, engine.isRunning {
+            engine.stop()
+        }
+    }
+
     /// Plays the chime once, interrupting any still-sounding previous play.
-    /// Safe to call repeatedly; does nothing if the buffer failed to render.
+    /// Safe to call repeatedly. If the audio session can't be configured or
+    /// the engine can't start, the call degrades to silence — it never aborts.
     func playChime() {
         guard let buffer = chimeBuffer else { return }
         configureSession()
-        startEngineIfNeeded()
+        let engine = ensureEngine()
+        guard startEngineIfNeeded(engine) else { return }
+        guard let player else { return }
+
         player.scheduleBuffer(buffer, at: nil, options: [.interrupts]) { [weak self] in
-            // Release the engine between rare plays so it doesn't idle-run.
+            // Stop the player before the engine, then release the engine so it
+            // doesn't idle-run between rare plays. Always on the main thread.
             DispatchQueue.main.async {
                 guard let self else { return }
-                if self.engine.isRunning {
-                    self.engine.stop()
+                self.player?.stop()
+                if self.engine?.isRunning == true {
+                    self.engine?.stop()
                 }
-                self.player.stop()
                 self.isEngineStarted = false
             }
         }
@@ -74,13 +98,33 @@ final class StillMomentService {
         }
     }
 
-    private func startEngineIfNeeded() {
-        guard !isEngineStarted else { return }
+    /// Lazily builds the AVAudioEngine graph on first use. Returns the shared
+    /// engine, creating + attaching the player node if needed.
+    private func ensureEngine() -> AVAudioEngine {
+        if let engine { return engine }
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        self.engine = engine
+        self.player = player
+        return engine
+    }
+
+    /// Starts the engine if it isn't already running. Returns true only when
+    /// the engine is actually running — callers must guard playback on this.
+    private func startEngineIfNeeded(_ engine: AVAudioEngine) -> Bool {
+        if engine.isRunning {
+            isEngineStarted = true
+            return true
+        }
         do {
             try engine.start()
             isEngineStarted = true
+            return true
         } catch {
-            // Non-fatal.
+            isEngineStarted = false
+            return false
         }
     }
 
