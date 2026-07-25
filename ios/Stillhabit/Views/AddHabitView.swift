@@ -29,58 +29,62 @@ struct AddHabitView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("New habit")
-                .font(DesignSystem.Typography.sectionHeader)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .padding(.top, 8)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("New habit")
+                    .font(DesignSystem.Typography.sectionHeader)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .padding(.top, 8)
 
-            TextField("What would you like to nurture?", text: $title)
-                .font(DesignSystem.Typography.label)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .padding(16)
-                .background(DesignSystem.Colors.card, in: .rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
-                .focused($isTitleFocused)
-                .submitLabel(.done)
-                .onSubmit {
-                    if !trimmedTitle.isEmpty { save() }
+                TextField("What would you like to nurture?", text: $title)
+                    .font(DesignSystem.Typography.label)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .padding(16)
+                    .background(DesignSystem.Colors.card, in: .rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
+                    .focused($isTitleFocused)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        if !trimmedTitle.isEmpty { save() }
+                    }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 10)], alignment: .leading, spacing: 10) {
+                    ForEach(availablePalette) { habitColor in
+                        colorSwatch(habitColor)
+                    }
                 }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 10)], alignment: .leading, spacing: 10) {
-                ForEach(availablePalette) { habitColor in
-                    colorSwatch(habitColor)
+                CadencePicker(
+                    cadence: $cadence,
+                    selectedWeekdays: $selectedWeekdays,
+                    weeklyGoal: $weeklyGoal,
+                    accent: Color(hex: selectedHex)
+                )
+
+                HabitTypePicker(
+                    type: $type,
+                    accent: Color(hex: selectedHex)
+                )
+
+                Button(action: save) {
+                    Text("Begin")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(DesignSystem.Colors.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color(hex: selectedHex), in: Capsule())
                 }
+                .buttonStyle(.stillTactileWave(accent: Color(hex: selectedHex)))
+                .disabled(trimmedTitle.isEmpty)
+                .opacity(trimmedTitle.isEmpty ? 0.4 : 1)
+                .animation(.easeOut(duration: 0.2), value: trimmedTitle.isEmpty)
+
+                Spacer(minLength: 0)
             }
-
-            CadencePicker(
-                cadence: $cadence,
-                selectedWeekdays: $selectedWeekdays,
-                weeklyGoal: $weeklyGoal,
-                accent: Color(hex: selectedHex)
-            )
-
-            HabitTypePicker(
-                type: $type,
-                accent: Color(hex: selectedHex)
-            )
-
-            Button(action: save) {
-                Text("Begin")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.onAccent)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(Color(hex: selectedHex), in: Capsule())
-            }
-            .buttonStyle(.stillTactileWave(accent: Color(hex: selectedHex)))
-            .disabled(trimmedTitle.isEmpty)
-            .opacity(trimmedTitle.isEmpty ? 0.4 : 1)
-            .animation(.easeOut(duration: 0.2), value: trimmedTitle.isEmpty)
-
-            Spacer(minLength: 0)
+            .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
         }
-        .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
-        .padding(.top, 16)
+        .scrollDismissesKeyboard(.interactively)
         .presentationDetents([.height(store.isPremium ? 696 : 636)])
         .presentationBackground(DesignSystem.Colors.background)
         .presentationCornerRadius(28)
