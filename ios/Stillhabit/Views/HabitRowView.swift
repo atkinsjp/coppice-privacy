@@ -10,6 +10,9 @@ import SwiftUI
 
 struct HabitRowView: View {
     let habit: Habit
+    /// When true (Today list), `.weeklyTarget` habits render a quiet
+    /// "x of y this week" sub-label and gently fade once the target is met.
+    var showsWeeklyProgress: Bool = false
     var onOpen: () -> Void = {}
     var onRest: () -> Void = {}
     var onDelete: () -> Void = {}
@@ -26,6 +29,20 @@ struct HabitRowView: View {
 
     private var accent: Color { Color(hex: habit.colorHex) }
     private var isDoneToday: Bool { habit.isCompleted(on: Date()) }
+
+    /// Whether this card should render in its completed/faded state. For
+    /// `.weeklyTarget` habits, the week's target being met counts as done
+    /// even if today itself isn't logged.
+    private var isEffectivelyDone: Bool {
+        isDoneToday || habit.weeklyTargetMet
+    }
+
+    /// Quiet sub-label for `.weeklyTarget` habits, e.g. "2 of 3 this week".
+    private var weeklyProgressLabel: String? {
+        guard showsWeeklyProgress, case .weeklyTarget(let target) = habit.cadence else { return nil }
+        let done = habit.completionsThisWeek()
+        return "\(min(done, target)) of \(target) this week"
+    }
 
     /// The one spring used for every card transformation.
     private var cardSpring: Animation { .spring(response: 0.35, dampingFraction: 0.7) }
@@ -80,15 +97,24 @@ struct HabitRowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(habit.title)
                     .font(DesignSystem.Typography.label)
-                    .foregroundStyle(isDoneToday ? DesignSystem.Colors.onAccent : DesignSystem.Colors.textPrimary)
+                    .foregroundStyle(isEffectivelyDone ? DesignSystem.Colors.onAccent : DesignSystem.Colors.textPrimary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                if let lastCompletionLabel {
+                if let weeklyProgressLabel {
+                    Text(weeklyProgressLabel)
+                        .font(DesignSystem.Typography.smallNumber)
+                        .foregroundStyle(
+                            isEffectivelyDone
+                                ? DesignSystem.Colors.onAccent.opacity(0.72)
+                                : DesignSystem.Colors.textSecondary
+                        )
+                        .transition(.opacity)
+                } else if let lastCompletionLabel {
                     Text(lastCompletionLabel)
                         .font(DesignSystem.Typography.smallNumber)
                         .foregroundStyle(
-                            isDoneToday
+                            isEffectivelyDone
                                 ? DesignSystem.Colors.onAccent.opacity(0.72)
                                 : DesignSystem.Colors.textSecondary
                         )
@@ -106,7 +132,7 @@ struct HabitRowView: View {
                 Text(streakLabel)
                     .font(DesignSystem.Typography.smallNumber)
                     .foregroundStyle(
-                        isDoneToday
+                        isEffectivelyDone
                             ? DesignSystem.Colors.onAccent.opacity(0.72)
                             : DesignSystem.Colors.textSecondary
                     )
@@ -114,13 +140,13 @@ struct HabitRowView: View {
                     .padding(.trailing, 16)
             }
         }
-        .background(isDoneToday ? accent : DesignSystem.Colors.card)
+        .background(isEffectivelyDone ? accent : DesignSystem.Colors.card)
         .clipShape(.rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
         .softShadow()
         .tactileWave(accent: accent, trigger: waveTick)
         .scaleEffect(isPressing ? 0.97 : 1)
         .offset(x: currentOffset)
-        .animation(cardSpring, value: isDoneToday)
+        .animation(cardSpring, value: isEffectivelyDone)
         .onTapGesture {
             if isRevealed {
                 withAnimation(cardSpring) { isRevealed = false }
@@ -142,7 +168,7 @@ struct HabitRowView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(habit.title)
         .accessibilityValue(
-            isDoneToday
+            isEffectivelyDone
                 ? "Completed today\(lastCompletionLabel.map { ", \($0)" } ?? "")"
                 : "Not completed today\(lastCompletionLabel.map { ", last done \($0)" } ?? "")"
         )

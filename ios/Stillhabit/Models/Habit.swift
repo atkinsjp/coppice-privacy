@@ -6,6 +6,25 @@
 import Foundation
 import SwiftData
 
+/// Flexible scheduling cadence for a habit.
+/// - `.daily`: scheduled every day
+/// - `.specificDays([Int])`: scheduled on the given weekday indexes (1...7, Sunday...Saturday)
+/// - `.weeklyTarget(Int)`: a soft goal of N completions per week (1...6)
+enum HabitCadence: Codable, Equatable, Hashable {
+    case daily
+    case specificDays([Int])
+    case weeklyTarget(Int)
+
+    /// Stable string representation used only for debugging / logging.
+    var debugDescription: String {
+        switch self {
+        case .daily: return "daily"
+        case .specificDays(let days): return "specificDays(\(days))"
+        case .weeklyTarget(let target): return "weeklyTarget(\(target))"
+        }
+    }
+}
+
 @Model
 final class Habit {
     var id: UUID
@@ -14,14 +33,18 @@ final class Habit {
     var completedDates: [Date]
     var colorHex: String
     var isArchived: Bool
+    /// Scheduling rule for this habit. Defaults to `.daily` so existing
+    /// habits behave exactly as before the cadence feature shipped.
+    var cadence: HabitCadence
 
-    init(title: String, colorHex: String) {
+    init(title: String, colorHex: String, cadence: HabitCadence = .daily) {
         self.id = UUID()
         self.title = title
         self.createdAt = Date()
         self.completedDates = []
         self.colorHex = colorHex
         self.isArchived = false
+        self.cadence = cadence
     }
 }
 
@@ -30,6 +53,51 @@ extension Habit {
     func isCompleted(on date: Date) -> Bool {
         let calendar = Calendar.current
         return completedDates.contains { calendar.isDate($0, inSameDayAs: date) }
+    }
+
+    /// Whether the given date is a scheduled day for this habit, per its cadence.
+    /// `.daily` is always scheduled; `.specificDays` checks the weekday index;
+    /// `.weeklyTarget` is always considered scheduled (the user may complete it
+    /// on any day until the weekly goal is met).
+    func isScheduled(on date: Date) -> Bool {
+        let calendar = Calendar.current
+        switch cadence {
+        case .daily:
+            return true
+        case .specificDays(let weekdays):
+            let weekdayIndex = calendar.component(.weekday, from: date)
+            return weekdays.contains(weekdayIndex)
+        case .weeklyTarget:
+            return true
+        }
+    }
+
+    /// Convenience for whether the habit is scheduled for today.
+    var isScheduledForToday: Bool {
+        isScheduled(on: Date())
+    }
+
+    /// Number of completions logged so far in the current calendar week (Sunday→Saturday).
+    func completionsThisWeek(on referenceDate: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: referenceDate) else { return 0 }
+        return completedDates.reduce(into: Set<Date>()) { result, completion in
+            if weekInterval.contains(completion) {
+                result.insert(calendar.startOfDay(for: completion))
+            }
+        }.count
+    }
+
+    /// For `.weeklyTarget` habits: the target count (0 for other cadences).
+    var weeklyTarget: Int {
+        if case .weeklyTarget(let target) = cadence { return target }
+        return 0
+    }
+
+    /// For `.weeklyTarget` habits: whether this week's target has been met.
+    var weeklyTargetMet: Bool {
+        guard case .weeklyTarget = cadence else { return false }
+        return completionsThisWeek() >= weeklyTarget
     }
 
     /// Adds or removes a completion entry for the given calendar day.

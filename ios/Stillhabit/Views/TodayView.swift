@@ -14,10 +14,17 @@ struct TodayView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @Query(filter: #Predicate<Habit> { !$0.isArchived }, sort: \Habit.createdAt)
-    private var habits: [Habit]
+    private var allHabits: [Habit]
 
     @Query(filter: #Predicate<Habit> { $0.isArchived }, sort: \Habit.createdAt)
     private var restingHabits: [Habit]
+
+    /// Only habits scheduled for today appear in the Today list. Cadence rules
+    /// (`.daily`, `.specificDays`, `.weeklyTarget`) are evaluated client-side
+    /// because SwiftData `#Predicate` can't call custom enum logic.
+    private var habits: [Habit] {
+        allHabits.filter { $0.isScheduledForToday }
+    }
 
     @State private var isAddingHabit = false
     @State private var isShowingResting = false
@@ -27,7 +34,7 @@ struct TodayView: View {
     @State private var ambientPlayer = AmbientSoundPlayer()
 
     private var completedCount: Int {
-        habits.filter { $0.isCompleted(on: Date()) }.count
+        habits.filter { $0.isCompleted(on: Date()) || $0.weeklyTargetMet }.count
     }
 
     private var progress: Double {
@@ -56,6 +63,7 @@ struct TodayView: View {
                         ForEach(habits) { habit in
                             HabitRowView(
                                 habit: habit,
+                                showsWeeklyProgress: true,
                                 onOpen: {
                                     selectedHabit = habit
                                 },
