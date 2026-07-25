@@ -51,6 +51,9 @@ final class Habit {
     var cadence: HabitCadence
     var type: HabitType
     var logs: [HabitLog]
+    /// Wall-clock anchor for an actively running `.duration` focus timer.
+    /// Must stay schema-identical with the app target.
+    var timerStart: Date?
 
     init(
         title: String,
@@ -67,6 +70,7 @@ final class Habit {
         self.cadence = cadence
         self.type = type
         self.logs = []
+        self.timerStart = nil
     }
 }
 

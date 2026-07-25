@@ -83,6 +83,7 @@ enum SharedStore {
             copy.completedDates = legacy.completedDates
             copy.isArchived = legacy.isArchived
             copy.logs = legacy.logs
+            copy.timerStart = legacy.timerStart
             context.insert(copy)
         }
 

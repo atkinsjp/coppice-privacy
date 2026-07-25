@@ -209,14 +209,20 @@ struct HabitDetailView: View {
     }
 
     private func heatmapCell(for date: Date) -> some View {
-        let isDone = habit.isCompleted(on: date)
+        let progress = habit.progress(on: date)
+        let isDone = progress >= 1
         let isToday = Calendar.current.isDateInToday(date)
+
+        // Dynamic fill: 0% = faint background wash, 1–99% = accent shaded
+        // proportionally, 100%+ = solid accent.
+        let fillOpacity = heatmapFillOpacity(for: progress)
+        let fill = isDone ? accent : accent.opacity(fillOpacity)
 
         return Button {
             toggleDay(date)
         } label: {
             RoundedRectangle(cornerRadius: 4)
-                .fill(isDone ? accent : accent.opacity(0.15))
+                .fill(fill)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if isToday {
@@ -230,9 +236,32 @@ struct HabitDetailView: View {
         }
         .buttonStyle(.stillTactileWave(accent: accent))
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isDone)
+        .animation(.easeOut(duration: 0.25), value: progress)
         .accessibilityLabel(date.formatted(.dateTime.month(.wide).day()))
-        .accessibilityValue(isDone ? "Completed" : "Not completed")
+        .accessibilityValue(heatmapAccessibilityValue(progress: progress))
         .accessibilityHint("Double tap to toggle")
+    }
+
+    /// Maps a 0...1 completion fraction to the heatmap cell's fill opacity:
+    /// 0 → faint background wash (0.15); 0.01–0.99 → interpolated between
+    /// 0.18 and 0.92 so partial days read as a visibly lighter shade of the
+    /// accent, scaling smoothly with progress; 1.0 is rendered as a solid
+    /// accent by the caller.
+    private func heatmapFillOpacity(for progress: Double) -> Double {
+        guard progress > 0 else { return 0.15 }
+        if progress >= 1 { return 1 }
+        let eased = 0.18 + (progress * 0.74)
+        return min(eased, 0.92)
+    }
+
+    /// VoiceOver value for a heatmap cell, reflecting partial progress for
+    /// numeric/duration habits (e.g. "64% complete") and a binary state for
+    /// check-in habits.
+    private func heatmapAccessibilityValue(progress: Double) -> String {
+        if progress >= 1 { return "Completed" }
+        if progress <= 0 { return "Not completed" }
+        let pct = Int((progress * 100).rounded())
+        return "\(pct)% complete"
     }
 
     /// Toggles the given calendar day in the habit's completion history.

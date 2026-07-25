@@ -38,16 +38,17 @@ struct HabitRowView: View {
     // Duration focus-timer state.
     /// Whether the countdown clock is currently expanded into view.
     @State private var isTimerExpanded = false
-    /// Whether the timer is actively counting down.
-    @State private var isTimerRunning = false
-    /// Wall-clock anchor for the current run. Elapsed during this run is
-    /// `Date().timeIntervalSince(timerStart)`; accumulated progress from
-    /// previous (paused) runs lives in the habit's `logs`.
-    @State private var timerStart: Date = .distantPast
     /// The remaining seconds shown on the clock. Updated by the tick.
     @State private var displayedRemainingSeconds: Double = 0
     /// Drives the breathing border while the timer runs.
     @State private var borderPulse = false
+
+    /// Whether the focus timer is actively running. Derived from the
+    /// persisted `habit.timerStart` so the state survives navigation away
+    /// from the view, the phone locking, and the app being killed — when the
+    /// card re-appears it reads as running again if the habit still has a
+    /// live start anchor.
+    private var isTimerRunning: Bool { habit.timerStart != nil }
 
     /// Distance the card must travel rightward to count as a completion swipe.
     private let completionThreshold: CGFloat = 88
@@ -384,33 +385,39 @@ struct HabitRowView: View {
     }
 
     /// Starts (or resumes) the focus timer. Elapsed accumulated from previous
-    /// paused runs lives in the habit's `logs`; this run is measured from now.
+    /// paused runs lives in the habit's `logs`; this run is measured from now
+    /// via the persisted `timerStart` anchor, so progress stays accurate across
+    /// backgrounding, screen lock, and app kills.
     private func startTimer() {
         guard !isEffectivelyDone else { return }
         withAnimation(cardSpring) { isTimerExpanded = true }
-        timerStart = Date()
-        isTimerRunning = true
+        habit.timerStart = Date()
+        saveAndNotify()
         startBorderPulse()
     }
 
-    /// Pauses the timer and persists the elapsed seconds so progress survives
-    /// across card interactions and app launches.
+    /// Pauses the timer: commits the elapsed seconds since `timerStart` to the
+    /// habit's `logs`, clears the persisted anchor, and persists so progress
+    /// survives across card interactions and app launches.
     private func pauseTimer() {
-        let runElapsed = Date().timeIntervalSince(timerStart)
-        isTimerRunning = false
+        guard let start = habit.timerStart else { return }
+        let runElapsed = Date().timeIntervalSince(start)
+        habit.timerStart = nil
         stopBorderPulse()
         if runElapsed > 0 {
             habit.logProgress(runElapsed, on: Date())
-            saveAndNotify()
         }
-        timerStart = .distantPast
+        saveAndNotify()
     }
 
     /// Called every 0.2s while running. Computes the remaining seconds from
-    /// accumulated logs + this run's elapsed time, and completes the habit
-    /// the instant the target is reached.
+    /// accumulated logs + this run's elapsed time (derived from the persisted
+    /// `timerStart` anchor), and completes the habit the instant the target is
+    /// reached. Also reconciles completion if the timer ran past zero while the
+    /// app was backgrounded.
     private func tickTimer() {
-        let runElapsed = Date().timeIntervalSince(timerStart)
+        guard let start = habit.timerStart else { return }
+        let runElapsed = Date().timeIntervalSince(start)
         let totalElapsed = habit.loggedToday + runElapsed
         let remaining = max(0, habit.durationTargetSeconds - totalElapsed)
         displayedRemainingSeconds = remaining
@@ -422,12 +429,14 @@ struct HabitRowView: View {
     /// Logs the final delta needed to hit the target exactly, stops the timer,
     /// fires the medium haptic + signature wave ripple, and collapses the
     /// expanded clock back down after a quiet beat so the completed card
-    /// settles on its own.
+    /// settles on its own. Works whether completion was observed live or after
+    /// returning from background.
     private func completeTimer() {
-        let runElapsed = Date().timeIntervalSince(timerStart)
+        guard let start = habit.timerStart else { return }
+        let runElapsed = Date().timeIntervalSince(start)
         let totalElapsed = habit.loggedToday + runElapsed
         let deficit = max(0, habit.durationTargetSeconds - totalElapsed)
-        isTimerRunning = false
+        habit.timerStart = nil
         stopBorderPulse()
         if deficit > 0 {
             habit.logProgress(deficit, on: Date())
@@ -438,7 +447,6 @@ struct HabitRowView: View {
         }
         waveTick += 1
         saveAndNotify()
-        timerStart = .distantPast
         displayedRemainingSeconds = 0
         Task {
             try? await Task.sleep(for: .milliseconds(900))
@@ -447,10 +455,28 @@ struct HabitRowView: View {
     }
 
     /// Seeds the displayed remaining time from persisted progress so the
-    /// clock shows the right value the first time the card expands.
+    /// clock shows the right value the first time the card expands. If the
+    /// timer is still running (the app was backgrounded or the card scrolled
+    /// off-screen), the running elapsed is included so the clock is accurate
+    /// the instant the card reappears.
     private func seedTimerDisplay() {
         guard case .duration = habitType else { return }
-        displayedRemainingSeconds = max(0, habit.durationTargetSeconds - habit.loggedToday)
+        let runningElapsed = habit.timerStart.map { Date().timeIntervalSince($0) } ?? 0
+        let totalElapsed = habit.loggedToday + runningElapsed
+        let remaining = max(0, habit.durationTargetSeconds - totalElapsed)
+        displayedRemainingSeconds = remaining
+        // If a timer is still anchored as running, reveal the expanded clock
+        // and restart the breathing border so the UI reflects the live state.
+        if habit.timerStart != nil, !isEffectivelyDone {
+            if remaining <= 0 {
+                // The timer elapsed past zero while the app was backgrounded
+                // or killed — reconcile completion immediately.
+                completeTimer()
+            } else {
+                isTimerExpanded = true
+                startBorderPulse()
+            }
+        }
     }
 
     // MARK: - Breathing border

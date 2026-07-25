@@ -81,6 +81,12 @@ final class Habit {
     /// Granular progress entries for `.numeric` and `.duration` habits.
     /// Empty for `.checkIn` habits. Order is chronological append.
     var logs: [HabitLog]
+    /// Wall-clock anchor for an actively running `.duration` focus timer.
+    /// Non-nil while the timer is running; set to `nil` on pause or completion.
+    /// Persisted so elapsed time stays accurate when the app is backgrounded,
+    /// the phone is locked, or the app is killed and relaunched — progress is
+    /// always `Date().timeIntervalSince(timerStart)` plus accumulated `logs`.
+    var timerStart: Date?
 
     init(
         title: String,
@@ -97,6 +103,7 @@ final class Habit {
         self.cadence = cadence
         self.type = type
         self.logs = []
+        self.timerStart = nil
     }
 }
 
@@ -204,6 +211,27 @@ extension Habit {
 
     /// Today's accumulated value (count or elapsed seconds).
     var loggedToday: Double { loggedValue(on: Date()) }
+
+    /// Completion progress for the given calendar day, clamped to 0...1.
+    /// Used by the 90-day heatmap to shade each cell by exact partial progress:
+    /// 0 = faint background, 0.01–0.99 = semi-transparent accent proportional
+    /// to progress, 1.0+ = solid accent. For `.checkIn` habits this is binary;
+    /// for `.numeric`/`.duration` it reflects `loggedValue / target`. A day that
+    /// is in `completedDates` always reads as fully complete (1.0) so the
+    /// canonical completion flag stays authoritative.
+    func progress(on date: Date) -> Double {
+        if isCompleted(on: date) { return 1 }
+        switch type {
+        case .checkIn:
+            return 0
+        case .numeric(let target, _):
+            guard target > 0 else { return 0 }
+            return min(loggedValue(on: date) / target, 1)
+        case .duration(let minutes):
+            guard minutes > 0 else { return 0 }
+            return min(loggedValue(on: date) / (Double(minutes) * 60), 1)
+        }
+    }
 
     /// Progress toward today's target, clamped to 0...1. For `.checkIn` habits
     /// this is simply 1 when complete, 0 otherwise.
