@@ -19,6 +19,27 @@ enum HabitCadence: Codable, Equatable, Hashable {
     case weeklyTarget(Int)
 }
 
+/// How a habit is measured and logged. Must stay byte-identical to the enum
+/// in the app target so the shared store decodes.
+enum HabitType: Codable, Equatable, Hashable {
+    case checkIn
+    case numeric(target: Double, unit: String)
+    case duration(targetMinutes: Int)
+}
+
+/// A single granular progress entry for `.numeric` and `.duration` habits.
+struct HabitLog: Codable, Equatable, Hashable, Identifiable {
+    var id: UUID
+    var date: Date
+    var loggedValue: Double
+
+    init(id: UUID = UUID(), date: Date = Date(), loggedValue: Double) {
+        self.id = id
+        self.date = date
+        self.loggedValue = loggedValue
+    }
+}
+
 @Model
 final class Habit {
     var id: UUID
@@ -28,8 +49,15 @@ final class Habit {
     var colorHex: String
     var isArchived: Bool
     var cadence: HabitCadence
+    var type: HabitType
+    var logs: [HabitLog]
 
-    init(title: String, colorHex: String, cadence: HabitCadence = .daily) {
+    init(
+        title: String,
+        colorHex: String,
+        cadence: HabitCadence = .daily,
+        type: HabitType = .checkIn
+    ) {
         self.id = UUID()
         self.title = title
         self.createdAt = Date()
@@ -37,6 +65,8 @@ final class Habit {
         self.colorHex = colorHex
         self.isArchived = false
         self.cadence = cadence
+        self.type = type
+        self.logs = []
     }
 }
 
@@ -90,11 +120,15 @@ extension Habit {
     }
 
     /// Adds or removes a completion entry for the given calendar day.
-    /// The exact timestamp is preserved so the app can show the completion time.
+    /// For `.numeric` and `.duration` habits, removing today's completion also
+    /// discards that day's granular logs so progress resets cleanly.
     func toggleCompletion(on date: Date) {
         let calendar = Calendar.current
         if let index = completedDates.firstIndex(where: { calendar.isDate($0, inSameDayAs: date) }) {
             completedDates.remove(at: index)
+            if calendar.isDateInToday(date) {
+                logs.removeAll { calendar.isDate($0.date, inSameDayAs: date) }
+            }
         } else {
             completedDates.append(date)
         }

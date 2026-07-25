@@ -121,6 +121,11 @@ struct HabitDetailView: View {
             Text(sinceLine)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            Text(habit.typeSummary)
+                .font(DesignSystem.Typography.smallNumber)
+                .foregroundStyle(accent)
+                .padding(.top, 2)
         }
     }
 

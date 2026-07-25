@@ -16,6 +16,7 @@ struct AddHabitView: View {
     @State private var cadence: HabitCadence = .daily
     @State private var selectedWeekdays: Set<Int> = []
     @State private var weeklyGoal: Int = 3
+    @State private var type: HabitType = .checkIn
     @FocusState private var isTitleFocused: Bool
 
     private var trimmedTitle: String {
@@ -58,6 +59,11 @@ struct AddHabitView: View {
                 accent: Color(hex: selectedHex)
             )
 
+            HabitTypePicker(
+                type: $type,
+                accent: Color(hex: selectedHex)
+            )
+
             Button(action: save) {
                 Text("Begin")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -75,7 +81,7 @@ struct AddHabitView: View {
         }
         .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
         .padding(.top, 16)
-        .presentationDetents([.height(store.isPremium ? 568 : 508)])
+        .presentationDetents([.height(store.isPremium ? 696 : 636)])
         .presentationBackground(DesignSystem.Colors.background)
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
@@ -117,10 +123,30 @@ struct AddHabitView: View {
         case .weeklyTarget:
             resolvedCadence = .weeklyTarget(max(1, min(weeklyGoal, 6)))
         }
-        let habit = Habit(title: trimmedTitle, colorHex: selectedHex, cadence: resolvedCadence)
+        let habit = Habit(
+            title: trimmedTitle,
+            colorHex: selectedHex,
+            cadence: resolvedCadence,
+            type: resolvedType
+        )
         modelContext.insert(habit)
         SharedStore.notifyWidgets()
         dismiss()
+    }
+
+    /// Normalizes the chosen type so a numeric habit always has a positive
+    /// target and a non-empty unit, and a duration habit always has a sane
+    /// minute target. `.checkIn` passes through untouched.
+    private var resolvedType: HabitType {
+        switch type {
+        case .checkIn:
+            return .checkIn
+        case .numeric(let target, let unit):
+            let cleanedUnit = unit.trimmingCharacters(in: .whitespaces)
+            return .numeric(target: max(1, target), unit: cleanedUnit.isEmpty ? "units" : cleanedUnit)
+        case .duration(let minutes):
+            return .duration(targetMinutes: max(1, min(120, minutes)))
+        }
     }
 
 }

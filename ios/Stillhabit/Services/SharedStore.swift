@@ -72,11 +72,17 @@ enum SharedStore {
               !legacyHabits.isEmpty else { return }
 
         for legacy in legacyHabits {
-            let copy = Habit(title: legacy.title, colorHex: legacy.colorHex, cadence: legacy.cadence)
+            let copy = Habit(
+                title: legacy.title,
+                colorHex: legacy.colorHex,
+                cadence: legacy.cadence,
+                type: legacy.type
+            )
             copy.id = legacy.id
             copy.createdAt = legacy.createdAt
             copy.completedDates = legacy.completedDates
             copy.isArchived = legacy.isArchived
+            copy.logs = legacy.logs
             context.insert(copy)
         }
 

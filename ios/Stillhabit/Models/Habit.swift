@@ -25,6 +25,45 @@ enum HabitCadence: Codable, Equatable, Hashable {
     }
 }
 
+/// How a habit is measured and logged.
+/// - `.checkIn`: standard Yes/No — one tap completes the day
+/// - `.numeric(target:unit:)`: a measurable daily target, e.g. 64 oz of water.
+///   Quick-add pills increment the day's accumulated value; when the target
+///   is reached the day is marked complete.
+/// - `.duration(targetMinutes:)`: a focus timer, e.g. 20 minutes of reading.
+///   When the elapsed seconds reach the target, the day is marked complete.
+enum HabitType: Codable, Equatable, Hashable {
+    case checkIn
+    case numeric(target: Double, unit: String)
+    case duration(targetMinutes: Int)
+
+    /// Stable string representation used only for debugging / logging.
+    var debugDescription: String {
+        switch self {
+        case .checkIn: return "checkIn"
+        case .numeric(let target, let unit): return "numeric(\(target) \(unit))"
+        case .duration(let minutes): return "duration(\(minutes)m)"
+        }
+    }
+}
+
+/// A single granular progress entry for `.numeric` and `.duration` habits.
+/// `loggedValue` is a count for numeric habits and elapsed seconds for
+/// duration habits. `checkIn` habits never produce logs — they only flip
+/// `completedDates`. Stored alongside `completedDates` so the canonical
+/// "done today" flag and streak logic stay untouched.
+struct HabitLog: Codable, Equatable, Hashable, Identifiable {
+    var id: UUID
+    var date: Date
+    var loggedValue: Double
+
+    init(id: UUID = UUID(), date: Date = Date(), loggedValue: Double) {
+        self.id = id
+        self.date = date
+        self.loggedValue = loggedValue
+    }
+}
+
 @Model
 final class Habit {
     var id: UUID
@@ -36,8 +75,19 @@ final class Habit {
     /// Scheduling rule for this habit. Defaults to `.daily` so existing
     /// habits behave exactly as before the cadence feature shipped.
     var cadence: HabitCadence
+    /// How this habit is measured and logged. Defaults to `.checkIn` so
+    /// existing habits keep their one-tap behavior.
+    var type: HabitType
+    /// Granular progress entries for `.numeric` and `.duration` habits.
+    /// Empty for `.checkIn` habits. Order is chronological append.
+    var logs: [HabitLog]
 
-    init(title: String, colorHex: String, cadence: HabitCadence = .daily) {
+    init(
+        title: String,
+        colorHex: String,
+        cadence: HabitCadence = .daily,
+        type: HabitType = .checkIn
+    ) {
         self.id = UUID()
         self.title = title
         self.createdAt = Date()
@@ -45,6 +95,8 @@ final class Habit {
         self.colorHex = colorHex
         self.isArchived = false
         self.cadence = cadence
+        self.type = type
+        self.logs = []
     }
 }
 
@@ -102,12 +154,113 @@ extension Habit {
 
     /// Adds or removes a completion entry for the given calendar day.
     /// The exact timestamp is preserved so the completion time can be shown later.
+    /// For `.numeric` and `.duration` habits, removing today's completion also
+    /// discards that day's granular logs so progress resets cleanly.
     func toggleCompletion(on date: Date) {
         let calendar = Calendar.current
         if let index = completedDates.firstIndex(where: { calendar.isDate($0, inSameDayAs: date) }) {
             completedDates.remove(at: index)
+            if calendar.isDateInToday(date) {
+                logs.removeAll { calendar.isDate($0.date, inSameDayAs: date) }
+            }
         } else {
             completedDates.append(date)
+        }
+    }
+
+    // MARK: - Typed logging
+
+    /// The numeric target for `.numeric` habits (0 otherwise).
+    var numericTarget: Double {
+        if case .numeric(let target, _) = type { return target }
+        return 0
+    }
+
+    /// The unit label for `.numeric` habits (empty otherwise).
+    var numericUnit: String {
+        if case .numeric(_, let unit) = type { return unit }
+        return ""
+    }
+
+    /// The duration target in minutes for `.duration` habits (0 otherwise).
+    var durationTargetMinutes: Int {
+        if case .duration(let minutes) = type { return minutes }
+        return 0
+    }
+
+    /// The duration target in seconds for `.duration` habits (0 otherwise).
+    var durationTargetSeconds: Double {
+        Double(durationTargetMinutes) * 60
+    }
+
+    /// Total logged value for the given calendar day. For `.numeric` habits
+    /// this is the accumulated count; for `.duration` habits, elapsed seconds.
+    func loggedValue(on date: Date) -> Double {
+        let calendar = Calendar.current
+        return logs
+            .filter { calendar.isDate($0.date, inSameDayAs: date) }
+            .reduce(0) { $0 + $1.loggedValue }
+    }
+
+    /// Today's accumulated value (count or elapsed seconds).
+    var loggedToday: Double { loggedValue(on: Date()) }
+
+    /// Progress toward today's target, clamped to 0...1. For `.checkIn` habits
+    /// this is simply 1 when complete, 0 otherwise.
+    var todayProgress: Double {
+        switch type {
+        case .checkIn:
+            return isCompleted(on: Date()) ? 1 : 0
+        case .numeric(let target, _):
+            guard target > 0 else { return 0 }
+            return min(loggedToday / target, 1)
+        case .duration(let minutes):
+            guard minutes > 0 else { return 0 }
+            return min(loggedToday / (Double(minutes) * 60), 1)
+        }
+    }
+
+    /// Appends a granular log entry for today and, if the target is now met,
+    /// marks today complete (preserving the exact completion timestamp so
+    /// streaks and the heatmap keep working unchanged). Does nothing for
+    /// `.checkIn` habits — those use `toggleCompletion` directly.
+    func logProgress(_ value: Double, on date: Date = Date()) {
+        guard value != 0 else { return }
+        switch type {
+        case .checkIn:
+            return
+        case .numeric, .duration:
+            logs.append(HabitLog(date: date, loggedValue: value))
+            if !isCompleted(on: date), todayProgress >= 1 {
+                completedDates.append(date)
+            }
+        }
+    }
+
+    /// A short, human-readable summary of the habit's measurement, e.g.
+    /// "64 oz/day", "20 min/day", or "Yes/No". Used in the detail view.
+    var typeSummary: String {
+        switch type {
+        case .checkIn: return "Yes / No"
+        case .numeric(let target, let unit):
+            return ValueFormatter.wholeOrDecimal(target) + " " + unit + "/day"
+        case .duration(let minutes):
+            return "\(minutes) min/day"
+        }
+    }
+
+    /// Today's progress as a display string, e.g. "32 / 64 oz" or "12:30 / 20:00".
+    var todayProgressLabel: String {
+        switch type {
+        case .checkIn:
+            return isCompleted(on: Date()) ? "Done" : "Not done"
+        case .numeric(let target, let unit):
+            return ValueFormatter.wholeOrDecimal(loggedToday)
+                + " / " + ValueFormatter.wholeOrDecimal(target) + " " + unit
+        case .duration(let minutes):
+            let elapsed = Int(loggedToday)
+            return ValueFormatter.clockString(seconds: elapsed)
+                + " / " + ValueFormatter.clockString(seconds: minutes * 60)
         }
     }
 
@@ -308,5 +461,27 @@ extension Habit {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return false }
             return completedDates.contains { calendar.isDate($0, inSameDayAs: day) }
         }
+    }
+}
+
+/// Quiet number formatting helpers for typed habit values.
+enum ValueFormatter {
+    /// Prints a Double as an integer when whole, otherwise with up to one
+    /// decimal place and trailing zeros stripped (e.g. 64 -> "64", 0.5 -> "0.5").
+    static func wholeOrDecimal(_ value: Double) -> String {
+        if value == value.rounded() {
+            return String(Int(value))
+        }
+        let formatted = String(format: "%.1f", value)
+        return formatted.hasSuffix(".0") ? String(format: "%.0f", value) : formatted
+    }
+
+    /// Formats an elapsed-seconds value as `m:ss` (e.g. 1198 -> "19:58").
+    /// Hours are not promoted — focus targets are 1–120 minutes.
+    static func clockString(seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let minutes = clamped / 60
+        let secs = clamped % 60
+        return String(format: "%d:%02d", minutes, secs)
     }
 }
