@@ -150,6 +150,7 @@ private struct WarmGlowPulse: View {
 
     @State private var scale: CGFloat = 0.4
     @State private var opacity: Double = 0
+    @State private var fadeTask: Task<Void, Never>?
 
     var body: some View {
         RadialGradient(
@@ -165,6 +166,7 @@ private struct WarmGlowPulse: View {
         .scaleEffect(scale)
         .opacity(opacity)
         .onAppear { animate() }
+        .onDisappear { fadeTask?.cancel() }
     }
 
     private func animate() {
@@ -183,8 +185,9 @@ private struct WarmGlowPulse: View {
         withAnimation(.easeIn(duration: 0.9)) {
             opacity = 0.72
         }
-        Task {
+        fadeTask = Task {
             try? await Task.sleep(for: .seconds(0.95))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 2.25)) {
                 opacity = 0
             }

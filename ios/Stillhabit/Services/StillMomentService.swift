@@ -8,105 +8,137 @@
 //  inharmonic partials and a slow exponential decay, fading to silence over
 //  ~3.5 seconds.
 //
-//  The chime is synthesized up front into a PCM buffer, then written to a
-//  temporary WAV file and played through a standard AVAudioPlayer — the same
-//  stable playback path the ambient loops use. We deliberately avoid
-//  AVAudioEngine + AVAudioPlayerNode here because that graph is flaky on the
-//  iOS simulator and can abort internally in the audio render thread, even
-//  when engine.start() is wrapped in do-catch. AVAudioPlayer has no such
-//  render thread and degrades cleanly to silence on any failure.
+//  IMPORTANT: This service deliberately avoids AVFoundation entirely — no
+//  AVAudioSession, no AVAudioEngine, no AVAudioPlayer, no AVAudioFile. On the
+//  iOS 26 simulator, AVAudioSession.setActive(true) can abort() internally
+//  in C++ audio-session code, outside any Swift do-catch, producing a SIGABRT
+//  with no recoverable error. Three consecutive preview crashes all shared the
+//  same PC address, confirming a deterministic abort in a system audio function.
 //
-//  The session uses `.ambient` + `.mixWithOthers` so the chime respects the
-//  silent switch and blends politely with any active ambient loop, never
-//  interrupting other audio. Nothing here is loud or harsh — the whole point
-//  is a gentle, grounding resolution to the day.
+//  Instead, the chime is synthesized as raw PCM samples (pure Swift math),
+//  written to a temporary WAV file manually (RIFF/WAVE header — no AVFoundation),
+//  and played through AudioTool's AudioServicesPlaySystemSound, which:
+//    • Requires no audio session configuration
+//    • Respects the silent switch automatically
+//    • Has no render thread that can abort
+//    • Degrades silently on any failure
 //
 
 import Foundation
-import AVFoundation
+import AudioToolbox
 
 /// Synthesizes and plays the soft "Still Moment" singing-bowl chime.
 final class StillMomentService {
 
-    private static let sampleRate: Double = 44100
+    private static let sampleRate: Int = 44100
     private static let duration: Double = 3.5
 
-    /// The cached URL of the rendered WAV file. Built lazily on first play so
-    /// no AVFoundation resources are touched during SwiftUI view construction.
-    private var cachedChimeURL: URL?
-    private var player: AVAudioPlayer?
+    /// The cached system sound ID of the rendered chime. Built lazily on first
+    /// play so no AudioTool resources are touched during SwiftUI view construction.
+    private var cachedSoundID: SystemSoundID = 0
+    private var hasRendered: Bool = false
 
     init() {
-        // Intentionally empty — all AVFoundation work is deferred to the first
+        // Intentionally empty — all audio work is deferred to the first
         // playChime() call so view construction never touches the audio stack.
     }
 
     deinit {
-        player?.stop()
+        if cachedSoundID != 0 {
+            AudioServicesDisposeSystemSoundID(cachedSoundID)
+        }
     }
 
-    /// Plays the chime once, interrupting any still-sounding previous play.
-    /// Safe to call repeatedly. If the audio session can't be configured, the
-    /// WAV can't be rendered, or the player can't start, the call degrades to
-    /// silence — it never aborts.
+    /// Plays the chime once. Safe to call repeatedly. If the chime can't be
+    /// rendered or loaded, the call degrades to silence — it never aborts.
     func playChime() {
-        configureSession()
-        guard let url = ensureChimeFile() else { return }
-        do {
-            // Stop and replace any existing player so a new play always starts
-            // from the beginning of the chime.
-            player?.stop()
-            let newPlayer = try AVAudioPlayer(contentsOf: url)
-            newPlayer.volume = 0.9
-            newPlayer.prepareToPlay()
-            newPlayer.play()
-            player = newPlayer
-        } catch {
-            // Non-fatal: the chime simply won't be audible.
-            player = nil
-        }
+        guard ensureChimeSound() else { return }
+        AudioServicesPlaySystemSound(cachedSoundID)
     }
 
     // MARK: - Private
 
-    private func configureSession() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.ambient, options: [.mixWithOthers])
-            try session.setActive(true)
-        } catch {
-            // Non-fatal: the chime simply won't be audible.
-        }
+    /// Renders the synthesized chime to a temporary WAV file (if not already
+    /// cached) and loads it as a system sound. Returns false (silently) if
+    /// the file can't be written or the sound can't be loaded.
+    private func ensureChimeSound() -> Bool {
+        if hasRendered, cachedSoundID != 0 { return true }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stillhabit_chime.wav")
+        try? FileManager.default.removeItem(at: url)
+
+        guard writeChimeWAV(to: url) else { return false }
+
+        // Load the WAV file as a system sound. AudioServicesCreateSystemSoundID
+        // is a pure C API with no session configuration and no render thread.
+        var soundID: SystemSoundID = 0
+        let status = AudioServicesCreateSystemSoundID(url as CFURL, &soundID)
+        guard status == noErr, soundID != 0 else { return false }
+
+        cachedSoundID = soundID
+        hasRendered = true
+        return true
     }
 
-    /// Renders the synthesized chime to a temporary WAV file the first time it
-    /// is needed, then caches the URL for every subsequent play. Returns nil
-    /// (silently) if the file can't be written.
-    private func ensureChimeFile() -> URL? {
-        if let cachedChimeURL { return cachedChimeURL }
-        guard let buffer = synthesizeChime() else { return nil }
-        guard let url = writeChimeWAV(from: buffer) else { return nil }
-        cachedChimeURL = url
-        return url
+    // MARK: - WAV file writing (no AVFoundation)
+
+    /// Writes the synthesized chime to a WAV file at the given URL using a
+    /// manual RIFF/WAVE header + 16-bit PCM data. Returns false on any failure.
+    private func writeChimeWAV(to url: URL) -> Bool {
+        let samples = synthesizeChimeSamples()
+        guard !samples.isEmpty else { return false }
+
+        // RIFF/WAVE header for 16-bit PCM, mono, 44100 Hz.
+        let dataByteCount = samples.count * 2  // int16 = 2 bytes per sample
+        let fileSize = UInt32(4 + 24 + 8 + dataByteCount)  // "WAVE" + fmt + data header + data
+
+        var data = Data()
+        data.reserveCapacity(44 + dataByteCount)
+
+        // RIFF header
+        data.append("RIFF".data(using: .ascii)!)
+        data.append(UInt32(fileSize).littleEndianData)
+        data.append("WAVE".data(using: .ascii)!)
+
+        // fmt chunk
+        data.append("fmt ".data(using: .ascii)!)
+        data.append(UInt32(16).littleEndianData)          // chunk size
+        data.append(UInt16(1).littleEndianData)           // PCM format
+        data.append(UInt16(1).littleEndianData)           // 1 channel (mono)
+        data.append(UInt32(Self.sampleRate).littleEndianData)
+        data.append(UInt32(Self.sampleRate * 2).littleEndianData)  // byte rate
+        data.append(UInt16(2).littleEndianData)           // block align
+        data.append(UInt16(16).littleEndianData)          // bits per sample
+
+        // data chunk
+        data.append("data".data(using: .ascii)!)
+        data.append(UInt32(dataByteCount).littleEndianData)
+
+        // PCM samples — convert float [-1, 1] to int16
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            let intVal = Int16(clamped * 32767)
+            data.append(intVal.littleEndianData)
+        }
+
+        do {
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            return false
+        }
     }
 
     /// Renders a gentle, resonant chord with a slow exponential decay — a low
     /// fundamental plus slightly inharmonic partials to evoke the warm,
     /// beating character of a Tibetan singing bowl. A short attack avoids any
     /// click, and an overall decay term shapes the long, soft fade.
-    private func synthesizeChime() -> AVAudioPCMBuffer? {
-        let format = AVAudioFormat(
-            standardFormatWithSampleRate: Self.sampleRate,
-            channels: 1
-        )
-        guard let format else { return nil }
-
-        let frameCount = AVAudioFrameCount(Self.sampleRate * Self.duration)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-            return nil
-        }
-        buffer.frameLength = frameCount
-        guard let data = buffer.floatChannelData?[0] else { return buffer }
+    /// Returns an array of Float samples in [-1, 1].
+    private func synthesizeChimeSamples() -> [Float] {
+        let frameCount = Int(Double(Self.sampleRate) * Self.duration)
+        guard frameCount > 0 else { return [] }
 
         // (frequency Hz, relative amplitude, per-partial decay seconds)
         let partials: [(freq: Double, amp: Double, decay: Double)] = [
@@ -117,40 +149,47 @@ final class StillMomentService {
             (587.33, 0.10, 1.0),  // D5 — fifth, a whisper on top
         ]
 
-        let n = Int(frameCount)
-        for i in 0..<n {
-            let t = Double(i) / Self.sampleRate
+        let twoPi = 2.0 * Double.pi
+        let sampleRateDouble = Double(Self.sampleRate)
+        var samples = [Float]()
+        samples.reserveCapacity(frameCount)
+
+        for i in 0..<frameCount {
+            let t = Double(i) / sampleRateDouble
             let attack = min(1.0, t / 0.015)
             let overallDecay = exp(-t / 1.8)
             var sample = 0.0
             for p in partials {
-                sample += p.amp * exp(-t / p.decay) * sin(2.0 * Double.pi * p.freq * t)
+                sample += p.amp * exp(-t / p.decay) * sin(twoPi * p.freq * t)
             }
             // Keep the whole thing gentle — never louder than a soft breath.
-            data[i] = Float(sample * attack * overallDecay * 0.22)
+            samples.append(Float(sample * attack * overallDecay * 0.22))
         }
-        return buffer
+        return samples
     }
+}
 
-    /// Writes the synthesized PCM buffer to a temporary WAV file and returns
-    /// its URL. Uses AVAudioFile so the header is written correctly. Returns
-    /// nil on any failure — the caller degrades to silence.
-    private func writeChimeWAV(from buffer: AVAudioPCMBuffer) -> URL? {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("stillhabit_chime.wav")
-        // Remove any stale render so the file is always fresh.
-        try? FileManager.default.removeItem(at: url)
-        guard let format = buffer.format as? AVAudioFormat else { return nil }
-        do {
-            let file = try AVAudioFile(
-                forWriting: url,
-                settings: format.settings
-            )
-            try file.write(from: buffer)
-            return url
-        } catch {
-            try? FileManager.default.removeItem(at: url)
-            return nil
-        }
+// MARK: - Little-endian byte helpers
+
+private extension UInt16 {
+    var littleEndianData: Data {
+        Data([UInt8(truncatingIfNeeded: self), UInt8(truncatingIfNeeded: self >> 8)])
+    }
+}
+
+private extension UInt32 {
+    var littleEndianData: Data {
+        Data([
+            UInt8(truncatingIfNeeded: self),
+            UInt8(truncatingIfNeeded: self >> 8),
+            UInt8(truncatingIfNeeded: self >> 16),
+            UInt8(truncatingIfNeeded: self >> 24),
+        ])
+    }
+}
+
+private extension Int16 {
+    var littleEndianData: Data {
+        Data([UInt8(truncatingIfNeeded: self), UInt8(truncatingIfNeeded: self >> 8)])
     }
 }

@@ -43,6 +43,10 @@ struct TodayView: View {
     /// The previous value of `allComplete` — used to detect the rising edge
     /// (false → true) that triggers the Still Moment.
     @State private var wasAllComplete = false
+    /// Cancellable task for the Still Moment celebration timer. Cancelled
+    /// when the view disappears so the animation state can't be mutated
+    /// after the view is torn down.
+    @State private var stillMomentTask: Task<Void, Never>?
 
     private var completedCount: Int {
         habits.filter { $0.isCompleted(on: Date()) || $0.weeklyTargetMet }.count
@@ -132,6 +136,9 @@ struct TodayView: View {
         .onAppear {
             ambientPlayer.startIfEnabled()
             wasAllComplete = allComplete
+        }
+        .onDisappear {
+            stillMomentTask?.cancel()
         }
         .onChange(of: allComplete) { oldValue, newValue in
             guard !oldValue, newValue else { return }
@@ -298,12 +305,12 @@ struct TodayView: View {
         withAnimation(.easeInOut(duration: 0.8)) {
             isStillMomentActive = true
         }
-        Task { [self] in
+        stillMomentTask?.cancel()
+        stillMomentTask = Task {
             try? await Task.sleep(for: .seconds(4))
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 1.2)) {
-                    isStillMomentActive = false
-                }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 1.2)) {
+                isStillMomentActive = false
             }
         }
     }
