@@ -30,6 +30,7 @@ struct TodayView: View {
     @State private var isShowingResting = false
     @State private var isShowingPaywall = false
     @State private var isShowingAmbientSettings = false
+    @State private var isShowingWeeklyGraph = false
     @State private var selectedHabit: Habit?
     @State private var ambientPlayer = AmbientSoundPlayer()
 
@@ -133,6 +134,9 @@ struct TodayView: View {
         .sheet(isPresented: $isShowingPaywall) {
             PaywallView()
         }
+        .sheet(isPresented: $isShowingWeeklyGraph) {
+            WeeklyGraphView()
+        }
         .onAppear {
             ambientPlayer.startIfEnabled()
             wasAllComplete = allComplete
@@ -181,6 +185,8 @@ struct TodayView: View {
 
                 Spacer()
 
+                graphButton
+
                 ambientButton
 
                 Button {
@@ -198,6 +204,25 @@ struct TodayView: View {
                 .accessibilityLabel("New habit")
             }
         }
+    }
+
+    // MARK: - Weekly graph
+
+    private var graphButton: some View {
+        Button {
+            isShowingWeeklyGraph = true
+        } label: {
+            Image(systemName: "chart.bar")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .frame(width: 40, height: 40)
+                .background(DesignSystem.Colors.card, in: Circle())
+                .softShadow()
+        }
+        .frame(width: 44, height: 44)
+        .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
+        .accessibilityLabel("Weekly completion graph")
+        .accessibilityHint("Opens a 7-day bar graph of your habits")
     }
 
     // MARK: - Ambient sound
