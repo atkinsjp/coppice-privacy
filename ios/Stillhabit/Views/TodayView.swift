@@ -141,7 +141,7 @@ struct TodayView: View {
                 }
             }
             .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
-            .padding(.top, 12)
+            .padding(.top, 18)
             .padding(.bottom, 96)
         }
         .scrollDisabled(isStillMomentActive)
@@ -206,17 +206,29 @@ struct TodayView: View {
 
     // MARK: - Header
 
+    /// An elevated, branded header: the StillHabit emblem on the leading
+    /// edge, the app name + tagline stacked beside it, and the existing
+    /// control buttons (sort, graph, ambient, add) aligned on the trailing
+    /// edge. Generous top padding keeps the crest breathable.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(dateLine)
                 .font(DesignSystem.Typography.overline)
                 .tracking(1.6)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            HStack(alignment: .center) {
-                Text("Today")
-                    .font(DesignSystem.Typography.largeHeader)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            HStack(alignment: .center, spacing: 14) {
+                StillHabitLogoView(size: 44)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("StillHabit")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text("Calm Habit Tracker")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(DesignSystem.Colors.slateBlue)
+                }
 
                 Spacer()
 
