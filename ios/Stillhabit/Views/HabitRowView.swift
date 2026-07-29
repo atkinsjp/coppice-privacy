@@ -165,9 +165,28 @@ struct HabitRowView: View {
         (isRevealed ? -actionsWidth : 0) + dragOffset
     }
 
+    /// The streak count with a unit suffix appropriate to the cadence —
+    /// "d" for daily/specific-days habits, "w" for weekly-target habits
+    /// whose streak counts consecutive target-metting weeks.
     private var streakLabel: String? {
         let streak = habit.currentStreak
-        return streak > 0 ? "\(streak)d" : nil
+        guard streak > 0 else { return nil }
+        if case .weeklyTarget = habit.cadence {
+            return "\(streak)w"
+        }
+        return "\(streak)d"
+    }
+
+    /// Whether the streak is long enough to warrant a slightly warmer, more
+    /// prominent flame — 7+ for day streaks, 2+ for week streaks (since
+    /// weekly streaks are harder to sustain).
+    private var isLongStreak: Bool {
+        let streak = habit.currentStreak
+        guard streak > 0 else { return false }
+        if case .weeklyTarget = habit.cadence {
+            return streak >= 2
+        }
+        return streak >= 7
     }
 
     /// Quiet line describing when this habit was last completed, e.g.
@@ -239,15 +258,7 @@ struct HabitRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topTrailing) {
             if let streakLabel {
-                Text(streakLabel)
-                    .font(DesignSystem.Typography.smallNumber)
-                    .foregroundStyle(
-                        isEffectivelyDone
-                            ? DesignSystem.Colors.onAccent.opacity(0.72)
-                            : DesignSystem.Colors.textSecondary
-                    )
-                    .padding(.top, 12)
-                    .padding(.trailing, 16)
+                streakBadge(streakLabel)
             }
         }
         .background(cardBackground)
@@ -290,6 +301,32 @@ struct HabitRowView: View {
         .accessibilityAction(named: "Delete") { onDelete() }
         .accessibilityAction(named: "Move up") { onReorder(listIndex, max(0, listIndex - 1)) }
         .accessibilityAction(named: "Move down") { onReorder(listIndex, listIndex + 1) }
+    }
+
+    // MARK: - Streak badge
+
+    /// A small, warm flame + count badge shown in the card's top-trailing
+    /// corner. The flame icon gives an immediate visual hook for motivation
+    /// while staying quiet — terracotta on rest, softened on-accent when done.
+    /// Longer streaks get a slightly fuller flame symbol as a gentle reward.
+    private func streakBadge(_ label: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: isLongStreak ? "flame.fill" : "flame")
+                .font(.system(size: 10, weight: .medium))
+            Text(label)
+                .font(DesignSystem.Typography.smallNumber)
+                .monospacedDigit()
+        }
+        .foregroundStyle(
+            isEffectivelyDone
+                ? DesignSystem.Colors.onAccent.opacity(0.72)
+                : isLongStreak
+                    ? DesignSystem.Colors.terracotta
+                    : DesignSystem.Colors.softOchre
+        )
+        .padding(.top, 12)
+        .padding(.trailing, 16)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Drag handle (reorder)
@@ -341,13 +378,22 @@ struct HabitRowView: View {
         let base = isEffectivelyDone
             ? "Completed today\(lastCompletionLabel.map { ", \($0)" } ?? "")"
             : "Not completed today\(lastCompletionLabel.map { ", last done \($0)" } ?? "")"
+        let streakSuffix: String = {
+            let streak = habit.currentStreak
+            guard streak > 0 else { return "" }
+            if case .weeklyTarget = habit.cadence {
+                return ", \(streak) week streak"
+            }
+            return ", \(streak) day streak"
+        }()
+        let fullBase = base + streakSuffix
         switch habitType {
         case .checkIn:
-            return base
+            return fullBase
         case .numeric:
-            return "\(base), \(habit.todayProgressLabel)"
+            return "\(fullBase), \(habit.todayProgressLabel)"
         case .duration:
-            return "\(base), \(habit.todayProgressLabel)"
+            return "\(fullBase), \(habit.todayProgressLabel)"
         }
     }
 
