@@ -30,7 +30,7 @@ struct HabitDetailView: View {
     private let dayCount = 90
     private let columns = 15
 
-    private var accent: Color { Color(hex: habit.colorHex) }
+    private var accent: Color { DesignSystem.habitColor(forHex: habit.colorHex) }
 
     /// The trailing 90 calendar days, oldest first (today last).
     private var trailDates: [Date] {

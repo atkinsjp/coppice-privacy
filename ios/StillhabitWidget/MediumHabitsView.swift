@@ -69,7 +69,7 @@ struct MediumHabitsView: View {
 struct HabitDotRow: View {
     let habit: HabitSnapshot
 
-    private var accent: Color { Color(hex: habit.colorHex) }
+    private var accent: Color { WidgetDesign.habitColor(forHex: habit.colorHex) }
 
     var body: some View {
         HStack(spacing: 12) {

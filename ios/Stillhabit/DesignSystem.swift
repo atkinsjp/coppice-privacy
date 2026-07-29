@@ -26,13 +26,15 @@ enum DesignSystem {
         static let textSecondary = Color(lightHex: "9B998F", darkHex: "8D908B")
 
         /// Ivory used on top of accent fills (buttons, checkmarks).
-        static let onAccent = Color(hex: "F9F8F6")
+        /// Slightly warmer in dark mode so it sits calmly on saturated fills.
+        static let onAccent = Color(lightHex: "F9F8F6", darkHex: "F4F2EC")
 
-        // Earth-toned accent palette.
-        static let sage = Color(hex: "8A9A86")
-        static let terracotta = Color(hex: "C8826D")
-        static let slateBlue = Color(hex: "7A8B99")
-        static let softOchre = Color(hex: "D8B08C")
+        // Earth-toned accent palette — each lifted in dark mode to stay
+        // calming yet readable against the deep charcoal background.
+        static let sage = Color(lightHex: "8A9A86", darkHex: "A0B09C")
+        static let terracotta = Color(lightHex: "C8826D", darkHex: "D89580")
+        static let slateBlue = Color(lightHex: "7A8B99", darkHex: "94A8B8")
+        static let softOchre = Color(lightHex: "D8B08C", darkHex: "E4BE9C")
     }
 
     // MARK: - Palette
@@ -40,26 +42,44 @@ enum DesignSystem {
     struct HabitColor: Identifiable {
         let name: String
         let hex: String
+        let darkHex: String
         var id: String { hex }
-        var color: Color { Color(hex: hex) }
+        /// A dynamic color that resolves to the light hex in light mode and the
+        /// lifted dark hex in dark mode.
+        var color: Color { Color(lightHex: hex, darkHex: darkHex) }
     }
 
-    /// The only accent colors habits may use.
+    /// Resolves a stored habit color hex into a dynamic Color that adapts to
+    /// the current color scheme. The static palette and premium palette values
+    /// are mapped to their dark-mode counterparts; any unknown hex (e.g. a
+    /// custom value from an older schema) falls back to the raw hex in both
+    /// modes so legacy habits never break.
+    static func habitColor(forHex hex: String) -> Color {
+        let all = palette + premiumPalette
+        if let match = all.first(where: { $0.hex.caseInsensitiveCompare(hex) == .orderedSame }) {
+            return match.color
+        }
+        return Color(hex: hex)
+    }
+
+    /// The only accent colors habits may use. Each entry carries a dark-mode
+    /// hex that lifts the tone just enough to stay readable on charcoal without
+    /// losing its earthy character.
     static let palette: [HabitColor] = [
-        HabitColor(name: "Sage", hex: "8A9A86"),
-        HabitColor(name: "Terracotta", hex: "C8826D"),
-        HabitColor(name: "Slate", hex: "7A8B99"),
-        HabitColor(name: "Ochre", hex: "D8B08C"),
+        HabitColor(name: "Sage", hex: "8A9A86", darkHex: "A0B09C"),
+        HabitColor(name: "Terracotta", hex: "C8826D", darkHex: "D89580"),
+        HabitColor(name: "Slate", hex: "7A8B99", darkHex: "94A8B8"),
+        HabitColor(name: "Ochre", hex: "D8B08C", darkHex: "E4BE9C"),
     ]
 
     /// Additional muted tones unlocked with Stillhabit Pro.
     static let premiumPalette: [HabitColor] = [
-        HabitColor(name: "Dusty Rose", hex: "B9908C"),
-        HabitColor(name: "Moss", hex: "6F7D65"),
-        HabitColor(name: "Clay", hex: "B08D6E"),
-        HabitColor(name: "Lavender Ash", hex: "9A92A8"),
-        HabitColor(name: "Pine", hex: "5E7268"),
-        HabitColor(name: "Stone", hex: "A8A196"),
+        HabitColor(name: "Dusty Rose", hex: "B9908C", darkHex: "CDA4A0"),
+        HabitColor(name: "Moss", hex: "6F7D65", darkHex: "889A7E"),
+        HabitColor(name: "Clay", hex: "B08D6E", darkHex: "C5A084"),
+        HabitColor(name: "Lavender Ash", hex: "9A92A8", darkHex: "B0A8BC"),
+        HabitColor(name: "Pine", hex: "5E7268", darkHex: "7A9084"),
+        HabitColor(name: "Stone", hex: "A8A196", darkHex: "BCB8AE"),
     ]
 
     // MARK: - Typography
@@ -96,8 +116,19 @@ enum DesignSystem {
 
 extension View {
     /// The one and only shadow in the app: soft, diffused, barely there.
+    /// In dark mode the shadow is deeper so cards still separate gently from
+    /// the charcoal background without a harsh outline.
     func softShadow() -> some View {
-        shadow(color: Color.black.opacity(0.04), radius: 12, x: 0, y: 4)
+        shadow(
+            color: Color(uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor.black.withAlphaComponent(0.28)
+                    : UIColor.black.withAlphaComponent(0.04)
+            }),
+            radius: 12,
+            x: 0,
+            y: 4
+        )
     }
 }
 

@@ -247,7 +247,7 @@ struct WeeklyGraphView: View {
     /// Unscheduled days render as a faint dashed placeholder so the rhythm of
     /// the week stays legible without implying failure.
     private func habitRow(_ habit: Habit) -> some View {
-        let accent = Color(hex: habit.colorHex)
+        let accent = DesignSystem.habitColor(forHex: habit.colorHex)
 
         return HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {

@@ -121,7 +121,7 @@ struct HabitRowView: View {
     /// the Edit action joined Rest and Delete behind the swipe-left gesture.
     private let actionsWidth: CGFloat = 168
 
-    private var accent: Color { Color(hex: habit.colorHex) }
+    private var accent: Color { DesignSystem.habitColor(forHex: habit.colorHex) }
     private var isDoneToday: Bool { habit.isCompleted(on: Date()) }
 
     private var habitType: HabitType { habit.type }

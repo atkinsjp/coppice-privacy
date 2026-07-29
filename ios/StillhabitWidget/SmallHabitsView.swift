@@ -18,7 +18,7 @@ struct SmallHabitsView: View {
 
     private var ringAccent: Color {
         if let top = entry.topUncompleted {
-            return Color(hex: top.colorHex)
+            return WidgetDesign.habitColor(forHex: top.colorHex)
         }
         return WidgetDesign.sage
     }
@@ -78,7 +78,7 @@ struct SmallHabitsView: View {
                     .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity)
                     .frame(height: 28)
-                    .background(Color(hex: top.colorHex), in: Capsule())
+                    .background(WidgetDesign.habitColor(forHex: top.colorHex), in: Capsule())
             }
             .buttonStyle(.plain)
             .invalidatableContent()

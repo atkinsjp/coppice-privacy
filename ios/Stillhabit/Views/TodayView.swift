@@ -550,7 +550,7 @@ struct TodayView: View {
         VStack(spacing: 14) {
             Image(systemName: "sparkles")
                 .font(.system(size: 26, weight: .light))
-                .foregroundStyle(Color(hex: "D8B08C"))
+                .foregroundStyle(DesignSystem.Colors.softOchre)
 
             Text("Everything is still.\nYour daily rituals are complete.")
                 .font(.system(size: 19, weight: .medium, design: .rounded))

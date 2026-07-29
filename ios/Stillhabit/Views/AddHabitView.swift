@@ -78,12 +78,12 @@ struct AddHabitView: View {
                     cadence: $cadence,
                     selectedWeekdays: $selectedWeekdays,
                     weeklyGoal: $weeklyGoal,
-                    accent: Color(hex: selectedHex)
+                    accent: DesignSystem.habitColor(forHex: selectedHex)
                 )
 
                 HabitTypePicker(
                     type: $type,
-                    accent: Color(hex: selectedHex)
+                    accent: DesignSystem.habitColor(forHex: selectedHex)
                 )
 
                 Button(action: save) {
@@ -92,9 +92,9 @@ struct AddHabitView: View {
                         .foregroundStyle(DesignSystem.Colors.onAccent)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
-                        .background(Color(hex: selectedHex), in: Capsule())
+                        .background(DesignSystem.habitColor(forHex: selectedHex), in: Capsule())
                 }
-                .buttonStyle(.stillTactileWave(accent: Color(hex: selectedHex)))
+                .buttonStyle(.stillTactileWave(accent: DesignSystem.habitColor(forHex: selectedHex)))
                 .disabled(trimmedTitle.isEmpty)
                 .opacity(trimmedTitle.isEmpty ? 0.4 : 1)
                 .animation(.easeOut(duration: 0.2), value: trimmedTitle.isEmpty)

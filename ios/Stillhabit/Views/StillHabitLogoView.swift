@@ -49,7 +49,14 @@ struct StillHabitLogoView: View {
         }
         .frame(width: size, height: size)
         .scaledToFit()
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+        .shadow(
+            color: Color(uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor.black.withAlphaComponent(0.22)
+                    : UIColor.black.withAlphaComponent(0.05)
+            }),
+            radius: 8, x: 0, y: 2
+        )
         .accessibilityHidden(true)
     }
 
@@ -130,5 +137,5 @@ private struct ZenStone: View {
         StillHabitLogoView(size: 88)
     }
     .padding(32)
-    .background(Color(hex: "F9F8F6"))
+    .background(DesignSystem.Colors.background)
 }

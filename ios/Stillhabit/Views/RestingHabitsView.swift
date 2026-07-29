@@ -56,7 +56,7 @@ struct RestingHabitsView: View {
     private func restingRow(_ habit: Habit) -> some View {
         HStack(spacing: 14) {
             Circle()
-                .fill(Color(hex: habit.colorHex).opacity(0.55))
+                .fill(DesignSystem.habitColor(forHex: habit.colorHex).opacity(0.55))
                 .frame(width: 10, height: 10)
 
             Text(habit.title)

@@ -19,11 +19,33 @@ enum WidgetDesign {
     /// Muted stone gray for supporting text.
     static let textSecondary = Color(lightHex: "9B998F", darkHex: "8D908B")
 
-    /// Ivory used on top of accent fills.
-    static let onAccent = Color(hex: "F9F8F6")
+    /// Ivory used on top of accent fills. Slightly warmer in dark mode.
+    static let onAccent = Color(lightHex: "F9F8F6", darkHex: "F4F2EC")
 
-    /// Default earth-tone accent.
-    static let sage = Color(hex: "8A9A86")
+    /// Default earth-tone accent — lifted in dark mode for readability.
+    static let sage = Color(lightHex: "8A9A86", darkHex: "A0B09C")
+
+    /// Mapping of stored habit color hexes to their dark-mode counterparts,
+    /// mirroring the app's `DesignSystem` palette so widgets stay consistent.
+    private static let darkColorMap: [String: String] = [
+        "8A9A86": "A0B09C",
+        "C8826D": "D89580",
+        "7A8B99": "94A8B8",
+        "D8B08C": "E4BE9C",
+        "B9908C": "CDA4A0",
+        "6F7D65": "889A7E",
+        "B08D6E": "C5A084",
+        "9A92A8": "B0A8BC",
+        "5E7268": "7A9084",
+        "A8A196": "BCB8AE",
+    ]
+
+    /// Resolves a stored habit color hex into a dynamic Color that adapts to
+    /// the current color scheme. Unknown hexes fall back to the raw value.
+    static func habitColor(forHex hex: String) -> Color {
+        let dark = darkColorMap[hex.uppercased()] ?? hex
+        return Color(lightHex: hex, darkHex: dark)
+    }
 }
 
 extension Color {
