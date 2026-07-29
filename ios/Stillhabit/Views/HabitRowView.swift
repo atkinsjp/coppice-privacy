@@ -45,6 +45,11 @@ struct HabitRowView: View {
     @State private var isRevealed = false
     @State private var waveTick = 0
 
+    // Streak pulse state. The flame badge springs whenever the habit's
+    // streak count increases after a completion — a tiny celebratory pop.
+    @State private var streakPulse = false
+    @State private var lastSeenStreak = 0
+
     // Drag-to-reorder state.
     /// Vertical offset applied to the card while it's being dragged to
     /// reorder. Reset to 0 on drop.
@@ -219,7 +224,10 @@ struct HabitRowView: View {
                 card
             }
         }
-        .onAppear { seedTimerDisplay() }
+        .onAppear {
+            seedTimerDisplay()
+            lastSeenStreak = habit.currentStreak
+        }
         .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
             guard isTimerRunning else { return }
             tickTimer()
@@ -324,9 +332,27 @@ struct HabitRowView: View {
                     ? DesignSystem.Colors.terracotta
                     : DesignSystem.Colors.softOchre
         )
+        .scaleEffect(streakPulse ? 1.35 : 1)
         .padding(.top, 12)
         .padding(.trailing, 16)
         .accessibilityHidden(true)
+    }
+
+    /// Fires a one-shot spring pop on the flame badge when the streak has
+    /// grown since the last observed value. Called after every completion
+    /// path (toggle, quick-add, timer). Does nothing when the streak is
+    /// unchanged or broken — only an increase earns the pop.
+    private func fireStreakPulseIfNeeded() {
+        let streak = habit.currentStreak
+        guard streak > lastSeenStreak else {
+            lastSeenStreak = streak
+            return
+        }
+        lastSeenStreak = streak
+        streakPulse = true
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.45)) {
+            streakPulse = false
+        }
     }
 
     // MARK: - Drag handle (reorder)
@@ -539,6 +565,9 @@ struct HabitRowView: View {
         if !wasDone, isEffectivelyDone {
             waveTick += 1
             completionSound.playChime()
+            fireStreakPulseIfNeeded()
+        } else {
+            lastSeenStreak = habit.currentStreak
         }
         saveAndNotify()
         revealNumericWhyAnchor()
@@ -690,6 +719,7 @@ struct HabitRowView: View {
         }
         waveTick += 1
         completionSound.playChime()
+        fireStreakPulseIfNeeded()
         saveAndNotify()
         displayedRemainingSeconds = 0
         Task {
@@ -1093,6 +1123,9 @@ struct HabitRowView: View {
         }
         if willComplete {
             completionSound.playChime()
+            fireStreakPulseIfNeeded()
+        } else {
+            lastSeenStreak = habit.currentStreak
         }
         saveAndNotify()
     }
