@@ -35,6 +35,16 @@ struct HabitRowView: View {
     @State private var isRevealed = false
     @State private var waveTick = 0
 
+    // Inline edit state (swipe-left → Edit). Scratch fields are seeded from
+    // the habit on enter and committed on save. `completedDates` and `logs`
+    // are never touched — only `title` and `type` may change.
+    @State private var isEditing = false
+    @State private var editingTitle: String = ""
+    @State private var editingNumericTarget: Double = 8
+    @State private var editingNumericUnit: String = ""
+    @State private var editingDurationMinutes: Int = 20
+    @FocusState private var isEditFieldFocused: Bool
+
     // Duration focus-timer state.
     /// Whether the countdown clock is currently expanded into view.
     @State private var isTimerExpanded = false
@@ -78,8 +88,9 @@ struct HabitRowView: View {
 
     /// Distance the card must travel rightward to count as a completion swipe.
     private let completionThreshold: CGFloat = 88
-    /// Width of the hidden trailing action area.
-    private let actionsWidth: CGFloat = 112
+    /// Width of the hidden trailing action area. Grew from 112 to 168 when
+    /// the Edit action joined Rest and Delete behind the swipe-left gesture.
+    private let actionsWidth: CGFloat = 168
 
     private var accent: Color { Color(hex: habit.colorHex) }
     private var isDoneToday: Bool { habit.isCompleted(on: Date()) }
@@ -152,7 +163,11 @@ struct HabitRowView: View {
         ZStack {
             swipeHint
             quickActions
-            card
+            if isEditing {
+                inlineEditor
+            } else {
+                card
+            }
         }
         .onAppear { seedTimerDisplay() }
         .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
@@ -217,7 +232,7 @@ struct HabitRowView: View {
             }
         }
         .modifier(CompletionLongPressModifier(
-            isEnabled: habitType.isCheckIn,
+            isEnabled: habitType.isCheckIn && !isEditing,
             isPressing: $isPressing,
             onComplete: { toggle() }
         ))
@@ -227,6 +242,7 @@ struct HabitRowView: View {
         .accessibilityValue(accessibilityValueText)
         .accessibilityAction(named: "Open details") { onOpen() }
         .accessibilityAction(named: isDoneToday ? "Mark incomplete" : "Mark complete") { toggle() }
+        .accessibilityAction(named: "Edit name and goal") { beginEditing() }
         .accessibilityAction(named: "Let it rest") { onRest() }
         .accessibilityAction(named: "Delete") { onDelete() }
     }
@@ -642,6 +658,18 @@ struct HabitRowView: View {
 
             Button {
                 withAnimation(cardSpring) { isRevealed = false }
+                beginEditing()
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.slateBlue)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.slateBlue))
+            .accessibilityLabel("Edit \(habit.title)")
+
+            Button {
+                withAnimation(cardSpring) { isRevealed = false }
                 onRest()
             } label: {
                 Image(systemName: "moon.zzz")
@@ -667,6 +695,218 @@ struct HabitRowView: View {
         .padding(.trailing, 4)
         .opacity(currentOffset < -12 ? 1 : 0)
         .animation(cardSpring, value: isRevealed)
+    }
+
+    // MARK: - Inline editor (swipe-to-edit)
+
+    /// The inline edit surface shown in place of the card after tapping the
+    /// Edit action revealed by swiping left. Lets the user adjust the habit's
+    /// name and its goal (numeric target/unit or duration minutes) without
+    /// opening the detail view. Only `title` and `type` are written back on
+    /// save — `completedDates`, `logs`, cadence, color, and `whyString` are
+    /// all preserved untouched.
+    private var inlineEditor: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("Habit name", text: $editingTitle)
+                .font(DesignSystem.Typography.label)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .padding(14)
+                .background(DesignSystem.Colors.background, in: .rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
+                .focused($isEditFieldFocused)
+                .submitLabel(.done)
+                .onSubmit { commitEdit() }
+
+            editGoalField
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button {
+                    cancelEdit()
+                } label: {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .frame(height: 40)
+                        .padding(.horizontal, 20)
+                        .background(DesignSystem.Colors.background, in: Capsule())
+                }
+                .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.textSecondary))
+                .accessibilityLabel("Cancel edit")
+
+                Button {
+                    commitEdit()
+                } label: {
+                    Text("Save")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(DesignSystem.Colors.onAccent)
+                        .frame(height: 40)
+                        .padding(.horizontal, 24)
+                        .background(accent, in: Capsule())
+                }
+                .buttonStyle(.stillTactileWave(accent: accent))
+                .disabled(trimmedEditingTitle.isEmpty)
+                .opacity(trimmedEditingTitle.isEmpty ? 0.4 : 1)
+                .accessibilityLabel("Save changes")
+            }
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignSystem.Colors.card)
+        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
+        .softShadow()
+        .scaleEffect(isPressing ? 0.97 : 1)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .animation(cardSpring, value: isEditing)
+        .onAppear {
+            isEditFieldFocused = true
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Type-aware goal editor shown beneath the title field. Check-in habits
+    /// have nothing to adjust, so only a quiet hint is shown.
+    @ViewBuilder
+    private var editGoalField: some View {
+        switch habitType {
+        case .checkIn:
+            Text("Check-in habits have no numeric goal to edit.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        case .numeric:
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("TARGET")
+                        .font(DesignSystem.Typography.overline)
+                        .tracking(1.2)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    TextField("8", text: editingTargetText)
+                        .keyboardType(.decimalPad)
+                        .font(DesignSystem.Typography.label)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .padding(12)
+                        .background(DesignSystem.Colors.background, in: .rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("UNIT")
+                        .font(DesignSystem.Typography.overline)
+                        .tracking(1.2)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    TextField("glasses, oz…", text: $editingNumericUnit)
+                        .font(DesignSystem.Typography.label)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .padding(12)
+                        .background(DesignSystem.Colors.background, in: .rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
+                }
+            }
+        case .duration:
+            HStack(spacing: 14) {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        editingDurationMinutes = max(1, editingDurationMinutes - 5)
+                    }
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
+                        .background(DesignSystem.Colors.background, in: Circle())
+                }
+                .buttonStyle(.stillTactileWave(accent: accent))
+                .disabled(editingDurationMinutes <= 5)
+                .accessibilityLabel("Decrease focus length")
+
+                Text("\(editingDurationMinutes)\u{2009}minutes")
+                    .font(DesignSystem.Typography.label)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .frame(maxWidth: .infinity)
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        editingDurationMinutes = min(120, editingDurationMinutes + 5)
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
+                        .background(DesignSystem.Colors.background, in: Circle())
+                }
+                .buttonStyle(.stillTactileWave(accent: accent))
+                .disabled(editingDurationMinutes >= 120)
+                .accessibilityLabel("Increase focus length")
+            }
+        }
+    }
+
+    /// Lightweight binding that parses the numeric target field and clamps it
+    /// to a positive value.
+    private var editingTargetText: Binding<String> {
+        Binding(
+            get: { ValueFormatter.wholeOrDecimal(editingNumericTarget) },
+            set: { newValue in
+                let parsed = Double(newValue.replacingOccurrences(of: ",", with: "."))
+                if let parsed, parsed > 0 {
+                    editingNumericTarget = parsed
+                }
+            }
+        )
+    }
+
+    /// The trimmed editing title, used to gate the Save button.
+    private var trimmedEditingTitle: String {
+        editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Seeds the scratch fields from the habit and flips into edit mode.
+    private func beginEditing() {
+        editingTitle = habit.title
+        switch habitType {
+        case .checkIn:
+            break
+        case .numeric(let target, let unit):
+            editingNumericTarget = max(1, target)
+            editingNumericUnit = unit
+        case .duration(let minutes):
+            editingDurationMinutes = max(1, minutes)
+        }
+        withAnimation(cardSpring) {
+            isEditing = true
+        }
+    }
+
+    /// Writes the trimmed title and resolved type back to the habit without
+    /// touching `completedDates` or `logs`, then exits edit mode.
+    private func commitEdit() {
+        let trimmed = trimmedEditingTitle
+        guard !trimmed.isEmpty else { return }
+        habit.title = trimmed
+        switch habitType {
+        case .checkIn:
+            break
+        case .numeric:
+            let cleanedUnit = editingNumericUnit.trimmingCharacters(in: .whitespaces)
+            habit.type = .numeric(
+                target: max(1, editingNumericTarget),
+                unit: cleanedUnit.isEmpty ? "units" : cleanedUnit
+            )
+        case .duration:
+            habit.type = .duration(targetMinutes: max(1, min(120, editingDurationMinutes)))
+        }
+        saveAndNotify()
+        withAnimation(cardSpring) {
+            isEditing = false
+        }
+        isEditFieldFocused = false
+    }
+
+    /// Discards the scratch fields and exits edit mode without any writes.
+    private func cancelEdit() {
+        withAnimation(cardSpring) {
+            isEditing = false
+        }
+        isEditFieldFocused = false
     }
 
     // MARK: - Gestures
@@ -704,7 +944,10 @@ struct HabitRowView: View {
 
     /// Flips today's completion. The tactile wave modifier fires the medium
     /// haptic pulse and the outward ripple the instant `waveTick` changes.
+    /// Disabled while the inline editor is open so the long-press can't fire
+    /// underneath the text fields.
     private func toggle() {
+        guard !isEditing else { return }
         waveTick += 1
         withAnimation(cardSpring) {
             habit.toggleCompletion(on: Date())
