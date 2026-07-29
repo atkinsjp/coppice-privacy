@@ -113,6 +113,13 @@ struct HabitRowView: View {
         isDoneToday || habit.weeklyTargetMet
     }
 
+    /// The soft per-habit completion chime — a gentle two-note whisper that
+    /// plays the instant any habit flips to complete. Uses the same
+    /// crash-safe PCM + AudioServicesPlaySystemSound approach as the Still
+    /// Moment service (no AVFoundation, no audio session) so it can never
+    /// trigger the simulator audio-session abort.
+    @State private var completionSound = CompletionSoundService()
+
     /// Quiet sub-label for `.weeklyTarget` habits, e.g. "2 of 3 this week".
     private var weeklyProgressLabel: String? {
         guard showsWeeklyProgress, case .weeklyTarget(let target) = habit.cadence else { return nil }
@@ -402,6 +409,7 @@ struct HabitRowView: View {
         habit.logProgress(value, on: Date())
         if !wasDone, isEffectivelyDone {
             waveTick += 1
+            completionSound.playChime()
         }
         saveAndNotify()
         revealNumericWhyAnchor()
@@ -552,6 +560,7 @@ struct HabitRowView: View {
             habit.completedDates.append(Date())
         }
         waveTick += 1
+        completionSound.playChime()
         saveAndNotify()
         displayedRemainingSeconds = 0
         Task {
@@ -948,9 +957,13 @@ struct HabitRowView: View {
     /// underneath the text fields.
     private func toggle() {
         guard !isEditing else { return }
+        let willComplete = !isDoneToday
         waveTick += 1
         withAnimation(cardSpring) {
             habit.toggleCompletion(on: Date())
+        }
+        if willComplete {
+            completionSound.playChime()
         }
         saveAndNotify()
     }
