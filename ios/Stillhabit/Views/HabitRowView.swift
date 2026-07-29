@@ -279,6 +279,10 @@ struct HabitRowView: View {
         .offset(y: reorderOffset)
         .zIndex(isReordering ? 100 : 0)
         .shadow(color: isReordering ? Color.black.opacity(0.12) : .clear, radius: isReordering ? 20 : 0)
+        // Completed cards gently dim so incomplete habits stay the visual focus.
+        // The accent fill remains, but the whole card recedes to ~58% opacity —
+        // enough to signal "done, move on" without hiding the streak or checkmark.
+        .opacity(isEffectivelyDone ? 0.58 : 1)
         .animation(cardSpring, value: isEffectivelyDone)
         .animation(cardSpring, value: isTimerExpanded)
         .animation(cardSpring, value: habit.todayProgress)
