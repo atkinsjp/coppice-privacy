@@ -24,9 +24,19 @@ struct HabitRowView: View {
     /// When true (Today list), `.weeklyTarget` habits render a quiet
     /// "x of y this week" sub-label and gently fade once the target is met.
     var showsWeeklyProgress: Bool = false
+    /// When true, a drag handle appears on the card and the user can
+    /// press-and-drag vertically to reorder the habit in the list. Only
+    /// enabled when the sort mode is `.manual`.
+    var allowsDragReorder: Bool = false
+    /// The habit's index in the sorted Today list, used to compute reorder
+    /// positions during a drag.
+    var listIndex: Int = 0
     var onOpen: () -> Void = {}
     var onRest: () -> Void = {}
     var onDelete: () -> Void = {}
+    /// Called when the user finishes a drag-to-reorder gesture. `from` is the
+    /// habit's original index; `to` is the target index in the sorted list.
+    var onReorder: (_ from: Int, _ to: Int) -> Void = { _, _ in }
 
     @Environment(\.modelContext) private var modelContext
 
@@ -34,6 +44,20 @@ struct HabitRowView: View {
     @State private var isPressing = false
     @State private var isRevealed = false
     @State private var waveTick = 0
+
+    // Drag-to-reorder state.
+    /// Vertical offset applied to the card while it's being dragged to
+    /// reorder. Reset to 0 on drop.
+    @State private var reorderOffset: CGFloat = 0
+    /// True while the card is lifted off the list and being dragged.
+    @State private var isReordering = false
+    /// The card's index at the moment the drag began, captured so the
+    /// `onReorder` callback always uses the original position even if the
+    /// view re-renders mid-drag.
+    @State private var reorderStartIndex: Int = 0
+    /// Estimated height of one row (card + spacing) used to convert the
+    /// drag translation into a target index.
+    private let reorderRowHeight: CGFloat = 94
 
     // Inline edit state (swipe-left → Edit). Scratch fields are seeded from
     // the habit on enter and committed on save. `completedDates` and `logs`
@@ -186,24 +210,32 @@ struct HabitRowView: View {
     // MARK: - Card
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: cardSpacing) {
-            HStack(spacing: 0) {
-                leadingContent
-                Spacer(minLength: 12)
-                trailingControl
+        HStack(spacing: 0) {
+            if allowsDragReorder, !isEditing {
+                dragHandle
+                    .padding(.leading, 8)
             }
 
-            if isWhyRevealed, let whyText = habit.whyAnchorText {
-                whyAnchorView(whyText)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            VStack(alignment: .leading, spacing: cardSpacing) {
+                HStack(spacing: 0) {
+                    leadingContent
+                    Spacer(minLength: 12)
+                    trailingControl
+                }
 
-            if isTimerExpanded, case .duration = habitType {
-                countdownClock
+                if isWhyRevealed, let whyText = habit.whyAnchorText {
+                    whyAnchorView(whyText)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if isTimerExpanded, case .duration = habitType {
+                    countdownClock
+                }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 22)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topTrailing) {
             if let streakLabel {
@@ -223,23 +255,27 @@ struct HabitRowView: View {
         .clipShape(.rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
         .softShadow()
         .tactileWave(accent: accent, trigger: waveTick)
-        .scaleEffect(isPressing ? 0.97 : 1)
+        .scaleEffect(isReordering ? 1.03 : (isPressing ? 0.97 : 1))
         .offset(x: currentOffset)
+        .offset(y: reorderOffset)
+        .zIndex(isReordering ? 100 : 0)
+        .shadow(color: isReordering ? Color.black.opacity(0.12) : .clear, radius: isReordering ? 20 : 0)
         .animation(cardSpring, value: isEffectivelyDone)
         .animation(cardSpring, value: isTimerExpanded)
         .animation(cardSpring, value: habit.todayProgress)
         .animation(.easeInOut(duration: 0.4), value: isWhyRevealed)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isReordering)
         .contentShape(.rect)
         .onTapGesture {
             if isRevealed {
                 withAnimation(cardSpring) { isRevealed = false }
-            } else {
+            } else if !isReordering {
                 waveTick += 1
                 onOpen()
             }
         }
         .modifier(CompletionLongPressModifier(
-            isEnabled: habitType.isCheckIn && !isEditing,
+            isEnabled: habitType.isCheckIn && !isEditing && !isReordering,
             isPressing: $isPressing,
             onComplete: { toggle() }
         ))
@@ -252,6 +288,53 @@ struct HabitRowView: View {
         .accessibilityAction(named: "Edit name and goal") { beginEditing() }
         .accessibilityAction(named: "Let it rest") { onRest() }
         .accessibilityAction(named: "Delete") { onDelete() }
+        .accessibilityAction(named: "Move up") { onReorder(listIndex, max(0, listIndex - 1)) }
+        .accessibilityAction(named: "Move down") { onReorder(listIndex, listIndex + 1) }
+    }
+
+    // MARK: - Drag handle (reorder)
+
+    /// A subtle grip icon shown on the leading edge of the card when manual
+    /// reordering is enabled. Pressing and dragging vertically on the handle
+    /// lifts the card out of the stack and repositions it in the list.
+    private var dragHandle: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(DesignSystem.Colors.textSecondary.opacity(0.5))
+            .frame(width: 20)
+            .contentShape(.rect)
+            .gesture(reorderDrag)
+            .accessibilityHidden(true)
+    }
+
+    /// The vertical drag gesture attached to the reorder handle. On change,
+    /// applies the translation as a vertical offset and lifts the card. On
+    /// end, computes the target index from the total translation divided by
+    /// the estimated row height and calls `onReorder`.
+    private var reorderDrag: some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                if !isReordering {
+                    reorderStartIndex = listIndex
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isReordering = true
+                    }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+                reorderOffset = value.translation.height
+            }
+            .onEnded { value in
+                let rowDelta = Int((value.translation.height / reorderRowHeight).rounded())
+                let targetIndex = max(0, reorderStartIndex + rowDelta)
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    reorderOffset = 0
+                    isReordering = false
+                }
+                if targetIndex != reorderStartIndex {
+                    onReorder(reorderStartIndex, targetIndex)
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
     }
 
     private var accessibilityValueText: String {

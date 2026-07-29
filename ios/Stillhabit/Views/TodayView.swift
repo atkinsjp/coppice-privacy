@@ -22,8 +22,32 @@ struct TodayView: View {
     /// Only habits scheduled for today appear in the Today list. Cadence rules
     /// (`.daily`, `.specificDays`, `.weeklyTarget`) are evaluated client-side
     /// because SwiftData `#Predicate` can't call custom enum logic.
-    private var habits: [Habit] {
+    private var scheduledHabits: [Habit] {
         allHabits.filter { $0.isScheduledForToday }
+    }
+
+    /// The visible habit list, ordered by the current sort mode. `.manual`
+    /// uses the persisted `order` property; the completion modes sort by
+    /// today's completion state (with `order` as a stable tiebreaker).
+    private var habits: [Habit] {
+        switch sortMode {
+        case .manual:
+            return scheduledHabits.sorted { $0.order < $1.order }
+        case .incompleteFirst:
+            return scheduledHabits.sorted { a, b in
+                let aDone = a.isCompleted(on: Date()) || a.weeklyTargetMet
+                let bDone = b.isCompleted(on: Date()) || b.weeklyTargetMet
+                if aDone == bDone { return a.order < b.order }
+                return !aDone && bDone
+            }
+        case .completeFirst:
+            return scheduledHabits.sorted { a, b in
+                let aDone = a.isCompleted(on: Date()) || a.weeklyTargetMet
+                let bDone = b.isCompleted(on: Date()) || b.weeklyTargetMet
+                if aDone == bDone { return a.order < b.order }
+                return aDone && !bDone
+            }
+        }
     }
 
     @State private var isAddingHabit = false
@@ -33,6 +57,12 @@ struct TodayView: View {
     @State private var isShowingWeeklyGraph = false
     @State private var selectedHabit: Habit?
     @State private var ambientPlayer = AmbientSoundPlayer()
+    /// Current sort mode for the Today list. Persists across launches.
+    @AppStorage("stillhabit.sortMode") private var sortModeRaw: String = HabitSortMode.manual.rawValue
+    /// The sort mode resolved from the persisted raw value.
+    private var sortMode: HabitSortMode {
+        HabitSortMode(rawValue: sortModeRaw) ?? .manual
+    }
 
     /// The "Still Moment" audio + visual reward. Plays once when the day's
     /// last scheduled habit flips to complete, and again only if the user
@@ -76,10 +106,12 @@ struct TodayView: View {
                     progressSection
 
                     LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
-                        ForEach(habits) { habit in
+                        ForEach(Array(habits.enumerated()), id: \.element.id) { index, habit in
                             HabitRowView(
                                 habit: habit,
                                 showsWeeklyProgress: true,
+                                allowsDragReorder: sortMode == .manual,
+                                listIndex: index,
                                 onOpen: {
                                     selectedHabit = habit
                                 },
@@ -94,6 +126,9 @@ struct TodayView: View {
                                         modelContext.delete(habit)
                                     }
                                     SharedStore.notifyWidgets()
+                                },
+                                onReorder: { fromIndex, toIndex in
+                                    reorderHabits(from: fromIndex, to: toIndex)
                                 }
                             )
                             .opacity(isStillMomentActive ? 0 : 1)
@@ -185,6 +220,8 @@ struct TodayView: View {
 
                 Spacer()
 
+                sortMenu
+
                 graphButton
 
                 ambientButton
@@ -204,6 +241,65 @@ struct TodayView: View {
                 .accessibilityLabel("New habit")
             }
         }
+    }
+
+    // MARK: - Sort menu
+
+    /// A quiet icon button that opens a menu for choosing how the Today list
+    /// is ordered: manual (drag to reorder), incomplete-first, or
+    /// complete-first. The icon reflects the active mode. Manual mode also
+    /// reveals a drag handle on each card so the user can press-and-drag to
+    /// rearrange habits.
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort order", selection: Binding(
+                get: { sortMode },
+                set: { newMode in
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        sortModeRaw = newMode.rawValue
+                    }
+                }
+            )) {
+                ForEach(HabitSortMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.icon).tag(mode)
+                }
+            }
+        } label: {
+            Image(systemName: sortMode.icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(
+                    sortMode == .manual
+                        ? DesignSystem.Colors.textPrimary
+                        : DesignSystem.Colors.sage
+                )
+                .frame(width: 40, height: 40)
+                .background(DesignSystem.Colors.card, in: Circle())
+                .softShadow()
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .frame(width: 44, height: 44)
+        .accessibilityLabel("Sort habits")
+        .accessibilityHint("Choose how habits are ordered")
+    }
+
+    // MARK: - Reorder
+
+    /// Reorders the manually-ordered habit list by rewriting the persisted
+    /// `order` values of all scheduled habits so they match the new visual
+    /// sequence. Indices refer to positions in the `habits` array (already
+    /// filtered to today's scheduled habits and sorted by `order`).
+    private func reorderHabits(from: Int, to: Int) {
+        var ordered = scheduledHabits.sorted { $0.order < $1.order }
+        guard from >= 0, from < ordered.count, to >= 0, to < ordered.count else { return }
+        let moved = ordered.remove(at: from)
+        ordered.insert(moved, at: to)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            for (index, habit) in ordered.enumerated() {
+                habit.order = index
+            }
+        }
+        try? modelContext.save()
+        SharedStore.notifyWidgets()
     }
 
     // MARK: - Weekly graph
@@ -392,4 +488,34 @@ struct TodayView: View {
     TodayView()
         .modelContainer(for: Habit.self, inMemory: true)
         .environment(StoreViewModel())
+}
+
+// MARK: - Sort mode
+
+/// How the Today list is ordered. `.manual` honors the user's drag-to-reorder
+/// arrangement (persisted via `Habit.order`); the completion modes sort by
+/// today's completion state with `order` as a stable tiebreaker so habits
+/// never jump around unpredictably within the same completion group.
+enum HabitSortMode: String, CaseIterable, Identifiable {
+    case manual
+    case incompleteFirst
+    case completeFirst
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .manual:           return "Manual"
+        case .incompleteFirst:  return "Incomplete first"
+        case .completeFirst:    return "Completed first"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .manual:           return "arrow.up.arrow.down"
+        case .incompleteFirst:  return "circle"
+        case .completeFirst:    return "checkmark.circle"
+        }
+    }
 }

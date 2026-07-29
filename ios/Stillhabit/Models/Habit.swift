@@ -91,13 +91,18 @@ final class Habit {
     /// *why* this habit matters, revealed as a reflective moment on the card
     /// right before the user logs progress. nil keeps the resting card clean.
     var whyString: String?
+    /// Manual ordering for the Today list. Lower values appear first. New
+    /// habits are appended after all existing non-archived habits. Only
+    /// consulted when the sort mode is `.manual`; other sort modes ignore it.
+    var order: Int
 
     init(
         title: String,
         colorHex: String,
         cadence: HabitCadence = .daily,
         type: HabitType = .checkIn,
-        whyString: String? = nil
+        whyString: String? = nil,
+        order: Int = 0
     ) {
         self.id = UUID()
         self.title = title
@@ -112,6 +117,7 @@ final class Habit {
         self.whyString = whyString?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? whyString?.trimmingCharacters(in: .whitespacesAndNewlines)
             : nil
+        self.order = order
     }
 }
 

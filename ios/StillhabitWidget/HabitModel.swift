@@ -56,13 +56,17 @@ final class Habit {
     var timerStart: Date?
     /// Optional intentionality anchor. Must stay schema-identical with the app target.
     var whyString: String?
+    /// Manual ordering for the Today list. Must stay schema-identical with the
+    /// app target. Lower values appear first.
+    var order: Int
 
     init(
         title: String,
         colorHex: String,
         cadence: HabitCadence = .daily,
         type: HabitType = .checkIn,
-        whyString: String? = nil
+        whyString: String? = nil,
+        order: Int = 0
     ) {
         self.id = UUID()
         self.title = title
@@ -75,6 +79,7 @@ final class Habit {
         self.logs = []
         self.timerStart = nil
         self.whyString = whyString
+        self.order = order
     }
 }
 

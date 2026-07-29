@@ -148,16 +148,28 @@ struct AddHabitView: View {
         case .weeklyTarget:
             resolvedCadence = .weeklyTarget(max(1, min(weeklyGoal, 6)))
         }
+        let nextOrder = nextHabitOrder()
         let habit = Habit(
             title: trimmedTitle,
             colorHex: selectedHex,
             cadence: resolvedCadence,
             type: resolvedType,
-            whyString: whyString
+            whyString: whyString,
+            order: nextOrder
         )
         modelContext.insert(habit)
         SharedStore.notifyWidgets()
         dismiss()
+    }
+
+    /// Computes the next manual order value so a newly created habit is
+    /// appended after all existing non-archived habits in the Today list.
+    private func nextHabitOrder() -> Int {
+        let descriptor = FetchDescriptor<Habit>(
+            predicate: #Predicate { !$0.isArchived }
+        )
+        let count = (try? modelContext.fetchCount(descriptor)) ?? 0
+        return count
     }
 
     /// Normalizes the chosen type so a numeric habit always has a positive
