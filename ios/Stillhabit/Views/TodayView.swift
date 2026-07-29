@@ -207,9 +207,10 @@ struct TodayView: View {
     // MARK: - Header
 
     /// An elevated, branded header: the StillHabit emblem on the leading
-    /// edge, the app name + tagline stacked beside it, and the existing
-    /// control buttons (sort, graph, ambient, add) aligned on the trailing
-    /// edge. Generous top padding keeps the crest breathable.
+    /// edge, the app name + tagline stacked beside it, and two clean
+    /// trailing controls — a primary "+" button and a single options menu
+    /// that gathers sort, analytics, and ambient sound. Generous top
+    /// padding keeps the crest breathable.
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(dateLine)
@@ -219,19 +220,19 @@ struct TodayView: View {
 
             HStack(alignment: .center, spacing: 12) {
                 // Leading brand block — logo + stacked title/subtitle.
-                HStack(alignment: .center, spacing: 10) {
-                    StillHabitLogoView(size: 40)
-                        .frame(width: 40, height: 40)
+                HStack(alignment: .center, spacing: 12) {
+                    StillHabitLogoView(size: 48)
+                        .frame(width: 48, height: 48)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("StillHabit")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
 
                         Text("Calm Habit Tracker")
-                            .font(.system(size: 13, weight: .regular))
+                            .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(DesignSystem.Colors.slateBlue)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
@@ -241,17 +242,16 @@ struct TodayView: View {
 
                 Spacer()
 
-                // Trailing action buttons — compact, uniform size.
+                // Trailing action buttons — a primary "+" and a single
+                // options menu that consolidates sort, analytics, and ambient.
                 HStack(spacing: 8) {
-                    sortMenu
-                    graphButton
-                    ambientButton
+                    optionsMenu
 
                     Button {
                         requestNewHabit()
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                             .frame(width: 36, height: 36)
                             .background(DesignSystem.Colors.card, in: Circle())
@@ -265,16 +265,15 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Sort menu
+    // MARK: - Options menu
 
-    /// A quiet icon button that opens a menu for choosing how the Today list
-    /// is ordered: manual (drag to reorder), incomplete-first, or
-    /// complete-first. The icon reflects the active mode. Manual mode also
-    /// reveals a drag handle on each card so the user can press-and-drag to
-    /// rearrange habits.
-    private var sortMenu: some View {
+    /// A single trailing menu button (`ellipsis`) that consolidates the
+    /// secondary actions: sort order, analytics & streaks, and ambient
+    /// sound mute/unmute. The primary "+" button stays standalone so the
+    /// most common action remains a single tap.
+    private var optionsMenu: some View {
         Menu {
-            Picker("Sort order", selection: Binding(
+            Picker("Sort habits", selection: Binding(
                 get: { sortMode },
                 set: { newMode in
                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -286,22 +285,43 @@ struct TodayView: View {
                     Label(mode.label, systemImage: mode.icon).tag(mode)
                 }
             }
-        } label: {
-            Image(systemName: sortMode.icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(
-                    sortMode == .manual
-                        ? DesignSystem.Colors.textPrimary
-                        : DesignSystem.Colors.sage
+
+            Button {
+                isShowingWeeklyGraph = true
+            } label: {
+                Label("Analytics & Streaks", systemImage: "chart.bar")
+            }
+
+            Button {
+                ambientPlayer.toggleMuted()
+            } label: {
+                Label(
+                    ambientPlayer.isMuted ? "Unmute Ambient Sounds" : "Mute Ambient Sounds",
+                    systemImage: ambientPlayer.isMuted ? "speaker.slash" : "speaker.wave.2"
                 )
+            }
+
+            Button {
+                isShowingAmbientSettings = true
+            } label: {
+                Label("Ambient Sound Settings…", systemImage: "speaker.wave.1")
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .frame(width: 36, height: 36)
                 .background(DesignSystem.Colors.card, in: Circle())
                 .softShadow()
-                .contentTransition(.symbolEffect(.replace))
         }
         .frame(width: 36, height: 36)
-        .accessibilityLabel("Sort habits")
-        .accessibilityHint("Choose how habits are ordered")
+        .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
+        .accessibilityLabel("Options")
+        .accessibilityHint("Sort habits, view analytics, or toggle ambient sounds")
+        .popover(isPresented: $isShowingAmbientSettings) {
+            AmbientSettingsView(player: ambientPlayer)
+                .presentationCompactAdaptation(.popover)
+        }
     }
 
     // MARK: - Reorder
@@ -322,53 +342,6 @@ struct TodayView: View {
         }
         try? modelContext.save()
         SharedStore.notifyWidgets()
-    }
-
-    // MARK: - Weekly graph
-
-    private var graphButton: some View {
-        Button {
-            isShowingWeeklyGraph = true
-        } label: {
-            Image(systemName: "chart.bar")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .frame(width: 36, height: 36)
-                .background(DesignSystem.Colors.card, in: Circle())
-                .softShadow()
-        }
-        .frame(width: 36, height: 36)
-        .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
-        .accessibilityLabel("Weekly completion graph")
-        .accessibilityHint("Opens a 7-day bar graph of your habits")
-    }
-
-    // MARK: - Ambient sound
-
-    private var ambientButton: some View {
-        Button {
-            isShowingAmbientSettings = true
-        } label: {
-            Image(systemName: ambientPlayer.current.icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(
-                    ambientPlayer.current == .off
-                        ? DesignSystem.Colors.textSecondary
-                        : ambientPlayer.current.accent
-                )
-                .frame(width: 36, height: 36)
-                .background(DesignSystem.Colors.card, in: Circle())
-                .softShadow()
-                .contentTransition(.symbolEffect(.replace))
-        }
-        .frame(width: 36, height: 36)
-        .buttonStyle(.stillTactileWave(accent: ambientPlayer.current.accent))
-        .accessibilityLabel(ambientPlayer.current.label)
-        .accessibilityHint("Opens ambient sound settings")
-        .popover(isPresented: $isShowingAmbientSettings) {
-            AmbientSettingsView(player: ambientPlayer)
-                .presentationCompactAdaptation(.popover)
-        }
     }
 
     // MARK: - Progress

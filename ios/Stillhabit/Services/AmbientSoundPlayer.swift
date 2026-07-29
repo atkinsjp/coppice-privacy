@@ -65,6 +65,7 @@ final class AmbientSoundPlayer {
     private static let preferenceKey = "ambientSoundChoice"
     private static let volumeKey = "ambientSoundVolume"
     private static let loopKey = "ambientSoundLoops"
+    private static let lastSoundKey = "ambientSoundLastNonOff"
     private static let defaultVolume: Float = 0.35
     private static let fadeInDuration: TimeInterval = 2.0
     private static let fadeOutDuration: TimeInterval = 0.8
@@ -128,6 +129,23 @@ final class AmbientSoundPlayer {
     func cycle() {
         select(current.next)
     }
+
+    /// Toggles between muted (`.off`) and the last-used soundscape. When
+    /// muting, the current non-off choice is remembered so it can be restored
+    /// on the next unmute. If no prior sound exists, forest is used.
+    func toggleMuted() {
+        if current == .off {
+            let saved = UserDefaults.standard.string(forKey: Self.lastSoundKey) ?? ""
+            let restore = AmbientSound(rawValue: saved) ?? .forest
+            select(restore)
+        } else {
+            UserDefaults.standard.set(current.rawValue, forKey: Self.lastSoundKey)
+            select(.off)
+        }
+    }
+
+    /// Whether ambient sound is currently muted.
+    var isMuted: Bool { current == .off }
 
     /// Switches to the given soundscape with a gentle crossfade.
     func select(_ sound: AmbientSound) {
