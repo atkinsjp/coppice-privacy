@@ -95,6 +95,35 @@ struct TodayView: View {
         Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased()
     }
 
+    /// Per-day overall completion ratio for the trailing 7 days, oldest first
+    /// (today last). Each value is `completedScheduled / scheduled` across all
+    /// non-archived habits for that calendar day. Days with no scheduled habits
+    /// default to 0 so the dot stays faint — a quiet visual rest day.
+    private var weekCompletionRatios: [Double] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return (0..<7).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
+            let scheduled = allHabits.filter { $0.isScheduled(on: day) }
+            guard !scheduled.isEmpty else { return 0 }
+            let done = scheduled.filter { $0.isCompleted(on: day) }.count
+            return Double(done) / Double(scheduled.count)
+        }
+    }
+
+    /// Short single-letter weekday initials for the trailing 7 days, oldest
+    /// first (today last). Uses the locale's very short weekday symbols.
+    private var weekDayInitials: [String] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let symbols = calendar.veryShortWeekdaySymbols
+        return (0..<7).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return "" }
+            let index = calendar.component(.weekday, from: day) - 1
+            return symbols[index]
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -212,7 +241,7 @@ struct TodayView: View {
     /// that gathers sort, analytics, and ambient sound. Generous top
     /// padding keeps the crest breathable.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(dateLine)
                 .font(DesignSystem.Typography.overline)
                 .tracking(1.6)
@@ -262,7 +291,78 @@ struct TodayView: View {
                     .accessibilityLabel("New habit")
                 }
             }
+
+            weekDotCalendar
         }
+    }
+
+    // MARK: - 7-day dot calendar
+
+    /// A small, calm row of 7 dots — one per trailing day, oldest first (today
+    /// last). Each dot fills proportionally to that day's overall completion
+    /// ratio across all scheduled habits, so a glance reveals the week's
+    /// rhythm of consistency. Today's dot carries a thin sage ring so the
+    /// current day is quietly anchored. Empty days (no scheduled habits) sit as
+    /// faint hollow dots, a visual rest rather than a gap.
+    private var weekDotCalendar: some View {
+        let ratios = weekCompletionRatios
+        let initials = weekDayInitials
+        let todayIndex = ratios.count - 1
+
+        return HStack(spacing: 10) {
+            ForEach(Array(ratios.enumerated()), id: \.offset) { index, ratio in
+                VStack(spacing: 5) {
+                    Text(initials[index])
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(
+                            index == todayIndex
+                                ? DesignSystem.Colors.sage
+                                : DesignSystem.Colors.textSecondary.opacity(0.7)
+                        )
+
+                    ZStack {
+                        if ratio >= 1 {
+                            Circle()
+                                .fill(DesignSystem.Colors.sage)
+                                .frame(width: 14, height: 14)
+                        } else if ratio > 0 {
+                            Circle()
+                                .fill(DesignSystem.Colors.softOchre.opacity(0.25 + ratio * 0.6))
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Circle()
+                                .stroke(DesignSystem.Colors.textSecondary.opacity(0.2), lineWidth: 1)
+                                .frame(width: 14, height: 14)
+                        }
+
+                        if index == todayIndex {
+                            Circle()
+                                .stroke(DesignSystem.Colors.sage.opacity(0.8), lineWidth: 1.5)
+                                .frame(width: 18, height: 18)
+                        }
+                    }
+                    .frame(height: 18)
+                    .animation(
+                        .spring(response: 0.45, dampingFraction: 0.85).delay(Double(index) * 0.03),
+                        value: ratios
+                    )
+                }
+                .accessibilityElement()
+                .accessibilityLabel(dotAccessibilityLabel(index: index, ratio: ratio, initials: initials))
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    /// VoiceOver label for a single day dot in the 7-day calendar.
+    private func dotAccessibilityLabel(index: Int, ratio: Double, initials: [String]) -> String {
+        let dayName = initials[index]
+        if ratio >= 1 { return "\(dayName) — all habits complete" }
+        if ratio > 0 {
+            let pct = Int(ratio * 100)
+            return "\(dayName) — \(pct) percent complete"
+        }
+        return "\(dayName) — no completions"
     }
 
     // MARK: - Options menu
