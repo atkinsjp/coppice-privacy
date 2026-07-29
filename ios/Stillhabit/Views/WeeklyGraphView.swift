@@ -427,6 +427,13 @@ struct WeeklyGraphView: View {
             Image(systemName: direction.symbol)
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(direction.color)
+                .opacity(hasAnimatedIn ? 1 : 0)
+                .offset(y: hasAnimatedIn ? 0 : -3)
+                .animation(
+                    .easeOut(duration: 0.5)
+                        .delay(0.35),
+                    value: hasAnimatedIn
+                )
                 .accessibilityLabel(direction.accessibilityLabel)
         )
     }
