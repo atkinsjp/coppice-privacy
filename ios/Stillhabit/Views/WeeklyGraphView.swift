@@ -37,12 +37,46 @@ struct WeeklyGraphView: View {
         }
     }
 
+    /// The 7 calendar days before the current trailing window — the previous
+    /// week, oldest first. Used to compare week-over-week performance.
+    private var previousWeekDates: [Date] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let weekAgo = calendar.date(byAdding: .day, value: -dayCount, to: today) else { return [] }
+        return (0..<dayCount).reversed().compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: weekAgo)
+        }
+    }
+
     /// Only habits with a real schedule this week are charted — archived and
     /// never-scheduled habits are excluded so the graph stays meaningful.
     private var graphHabits: [Habit] {
         allHabits.filter { habit in
             trailDates.contains { habit.isScheduled(on: $0) }
         }
+    }
+
+    /// The average completion ratio for a habit across the given dates,
+    /// counting only scheduled day-slots. Returns 0 when the habit had no
+    /// scheduled days in that window (e.g. it was created this week).
+    private func completionRatio(for habit: Habit, over dates: [Date]) -> Double {
+        let scheduled = dates.filter { habit.isScheduled(on: $0) }
+        guard !scheduled.isEmpty else { return 0 }
+        let summed = scheduled.reduce(0.0) { $0 + habit.progress(on: $1) }
+        return summed / Double(scheduled.count)
+    }
+
+    /// Whether the habit had any scheduled days in the previous week window.
+    /// Used to decide whether a trend arrow is meaningful — a habit created
+    /// this week has no prior baseline to compare against.
+    private func hasPreviousWeekBaseline(_ habit: Habit) -> Bool {
+        previousWeekDates.contains { habit.isScheduled(on: $0) && $0 >= habit.createdAt }
+    }
+
+    /// The signed change in completion ratio vs last week, in the range -1...1.
+    /// Positive means improvement; negative means decline.
+    private func weekOverWeekDelta(_ habit: Habit) -> Double {
+        completionRatio(for: habit, over: trailDates) - completionRatio(for: habit, over: previousWeekDates)
     }
 
     /// The total scheduled day-slots across all graphed habits this week.
@@ -217,9 +251,12 @@ struct WeeklyGraphView: View {
 
         return HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Circle()
-                    .fill(accent)
-                    .frame(width: 8, height: 8)
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 8, height: 8)
+                    trendArrow(for: habit)
+                }
                 Text(habit.title)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -257,7 +294,7 @@ struct WeeklyGraphView: View {
         }
         .softShadow()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(habit.title), \(habitWeeklySummary(habit))")
+        .accessibilityLabel("\(habit.title), \(habitWeeklySummary(habit))\(trendAccessibilitySuffix(habit))")
     }
 
     /// A single vertical bar for one habit-day. Height encodes progress 0–1.
@@ -373,6 +410,65 @@ struct WeeklyGraphView: View {
         .padding(.top, 72)
     }
 
+    // MARK: - Trend arrow
+
+    /// A small up/down arrow showing whether this habit's completion ratio
+    /// improved or declined versus the previous week. Rendered next to the
+    /// habit's color dot. Habits with no prior-week baseline (created this
+    /// week) show no arrow. An exactly-flat trend shows a quiet dash.
+    @ViewBuilder
+    private func trendArrow(for habit: Habit) -> some View {
+        guard hasPreviousWeekBaseline(habit) else {
+            return AnyView(EmptyView())
+        }
+        let delta = weekOverWeekDelta(habit)
+        let direction = TrendDirection.from(delta)
+        return AnyView(
+            Image(systemName: direction.symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(direction.color)
+                .accessibilityLabel(direction.accessibilityLabel)
+        )
+    }
+
+    /// The week-over-week trend classification for a single habit.
+    private enum TrendDirection {
+        case up, down, flat
+
+        /// Threshold below which a delta is considered flat (within 5%).
+        private static let flatThreshold: Double = 0.05
+
+        static func from(_ delta: Double) -> TrendDirection {
+            if delta > flatThreshold { return .up }
+            if delta < -flatThreshold { return .down }
+            return .flat
+        }
+
+        var symbol: String {
+            switch self {
+            case .up: return "arrow.up"
+            case .down: return "arrow.down"
+            case .flat: return "minus"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .up: return DesignSystem.Colors.sage
+            case .down: return DesignSystem.Colors.terracotta
+            case .flat: return DesignSystem.Colors.textSecondary.opacity(0.6)
+            }
+        }
+
+        var accessibilityLabel: String {
+            switch self {
+            case .up: return "improved from last week"
+            case .down: return "declined from last week"
+            case .flat: return "same as last week"
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     /// Per-habit VoiceOver summary, e.g. "4 of 6 days completed this week".
@@ -381,6 +477,15 @@ struct WeeklyGraphView: View {
         let completed = scheduled.filter { habit.progress(on: $0) >= 1 }
         guard !scheduled.isEmpty else { return "no scheduled days this week" }
         return "\(completed.count) of \(scheduled.count) days completed this week"
+    }
+
+    /// VoiceOver suffix appended to the row label describing the week-over-week
+    /// trend, e.g. ", improved from last week". Empty when there is no
+    /// prior-week baseline to compare against.
+    private func trendAccessibilitySuffix(_ habit: Habit) -> String {
+        guard hasPreviousWeekBaseline(habit) else { return "" }
+        let direction = TrendDirection.from(weekOverWeekDelta(habit))
+        return ", \(direction.accessibilityLabel)"
     }
 
     /// Staggered entrance delay so bars rise in a gentle left-to-right wave.
