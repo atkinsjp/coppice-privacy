@@ -45,9 +45,10 @@ struct StillHabitLogoView: View {
                 )
 
             emblem
-                .frame(width: size * 0.62, height: size * 0.62)
+                .frame(width: size * 0.82, height: size * 0.82)
         }
         .frame(width: size, height: size)
+        .scaledToFit()
         .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
         .accessibilityHidden(true)
     }
@@ -56,9 +57,9 @@ struct StillHabitLogoView: View {
     private var emblem: some View {
         ZStack {
             // Three concentric ripple rings, fading outward.
-            rippleRing(lineWidth: size * 0.022, scale: 1.00, opacity: 0.22)
-            rippleRing(lineWidth: size * 0.020, scale: 0.74, opacity: 0.34)
-            rippleRing(lineWidth: size * 0.018, scale: 0.50, opacity: 0.50)
+            rippleRing(lineWidth: size * 0.024, scale: 1.00, opacity: 0.22)
+            rippleRing(lineWidth: size * 0.022, scale: 0.72, opacity: 0.34)
+            rippleRing(lineWidth: size * 0.020, scale: 0.48, opacity: 0.50)
 
             // The resting stone — a soft, flattened ellipse with a gentle
             // gradient that catches light from the upper-left.
@@ -101,7 +102,7 @@ private struct ZenStone: View {
                         endRadius: size * 0.30
                     )
                 )
-                .frame(width: size * 0.34, height: size * 0.24)
+                .frame(width: size * 0.44, height: size * 0.30)
 
             // Soft ochre highlight — a quiet glint of warmth on the stone.
             Ellipse()
@@ -116,8 +117,8 @@ private struct ZenStone: View {
                         endRadius: size * 0.12
                     )
                 )
-                .frame(width: size * 0.18, height: size * 0.10)
-                .offset(x: -size * 0.04, y: -size * 0.03)
+                .frame(width: size * 0.22, height: size * 0.12)
+                .offset(x: -size * 0.05, y: -size * 0.04)
         }
     }
 }

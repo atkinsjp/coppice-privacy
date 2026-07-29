@@ -217,40 +217,50 @@ struct TodayView: View {
                 .tracking(1.6)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            HStack(alignment: .center, spacing: 14) {
-                StillHabitLogoView(size: 44)
+            HStack(alignment: .center, spacing: 12) {
+                // Leading brand block — logo + stacked title/subtitle.
+                HStack(alignment: .center, spacing: 10) {
+                    StillHabitLogoView(size: 40)
+                        .frame(width: 40, height: 40)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("StillHabit")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("StillHabit")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
 
-                    Text("Calm Habit Tracker")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(DesignSystem.Colors.slateBlue)
+                        Text("Calm Habit Tracker")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(DesignSystem.Colors.slateBlue)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
                 }
+                .layoutPriority(1)
 
                 Spacer()
 
-                sortMenu
+                // Trailing action buttons — compact, uniform size.
+                HStack(spacing: 8) {
+                    sortMenu
+                    graphButton
+                    ambientButton
 
-                graphButton
-
-                ambientButton
-
-                Button {
-                    requestNewHabit()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .frame(width: 40, height: 40)
-                        .background(DesignSystem.Colors.card, in: Circle())
-                        .softShadow()
+                    Button {
+                        requestNewHabit()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(width: 36, height: 36)
+                            .background(DesignSystem.Colors.card, in: Circle())
+                            .softShadow()
+                    }
+                    .frame(width: 36, height: 36)
+                    .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
+                    .accessibilityLabel("New habit")
                 }
-                .frame(width: 44, height: 44)
-                .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
-                .accessibilityLabel("New habit")
             }
         }
     }
@@ -278,18 +288,18 @@ struct TodayView: View {
             }
         } label: {
             Image(systemName: sortMode.icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(
                     sortMode == .manual
                         ? DesignSystem.Colors.textPrimary
                         : DesignSystem.Colors.sage
                 )
-                .frame(width: 40, height: 40)
+                .frame(width: 36, height: 36)
                 .background(DesignSystem.Colors.card, in: Circle())
                 .softShadow()
                 .contentTransition(.symbolEffect(.replace))
         }
-        .frame(width: 44, height: 44)
+        .frame(width: 36, height: 36)
         .accessibilityLabel("Sort habits")
         .accessibilityHint("Choose how habits are ordered")
     }
@@ -321,13 +331,13 @@ struct TodayView: View {
             isShowingWeeklyGraph = true
         } label: {
             Image(systemName: "chart.bar")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .frame(width: 40, height: 40)
+                .frame(width: 36, height: 36)
                 .background(DesignSystem.Colors.card, in: Circle())
                 .softShadow()
         }
-        .frame(width: 44, height: 44)
+        .frame(width: 36, height: 36)
         .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
         .accessibilityLabel("Weekly completion graph")
         .accessibilityHint("Opens a 7-day bar graph of your habits")
@@ -340,18 +350,18 @@ struct TodayView: View {
             isShowingAmbientSettings = true
         } label: {
             Image(systemName: ambientPlayer.current.icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(
                     ambientPlayer.current == .off
                         ? DesignSystem.Colors.textSecondary
                         : ambientPlayer.current.accent
                 )
-                .frame(width: 40, height: 40)
+                .frame(width: 36, height: 36)
                 .background(DesignSystem.Colors.card, in: Circle())
                 .softShadow()
                 .contentTransition(.symbolEffect(.replace))
         }
-        .frame(width: 44, height: 44)
+        .frame(width: 36, height: 36)
         .buttonStyle(.stillTactileWave(accent: ambientPlayer.current.accent))
         .accessibilityLabel(ambientPlayer.current.label)
         .accessibilityHint("Opens ambient sound settings")
