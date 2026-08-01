@@ -53,6 +53,8 @@ struct HabitDetailView: View {
                 VStack(alignment: .leading, spacing: 36) {
                     header
 
+                    MonthRhythmGridView(habit: habit, accent: accent)
+
                     heatmap
 
                     statsCapsule
