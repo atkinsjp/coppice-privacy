@@ -15,6 +15,7 @@ struct HabitDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @State private var completionSound = CompletionSoundService()
     @State private var displayedCurrentStreak: Int = 0
     @State private var displayedBestStreak: Int = 0
     @State private var displayedTotal: Int = 0
@@ -267,10 +268,16 @@ struct HabitDetailView: View {
     }
 
     /// Toggles the given calendar day in the habit's completion history.
-    /// The wave button style fires the medium haptic on release.
+    /// The wave button style fires the medium haptic on release, and the soft
+    /// completion chime plays only when a day is being marked complete — never
+    /// when one is being cleared.
     private func toggleDay(_ date: Date) {
+        let willComplete = !habit.isCompleted(on: date)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             habit.toggleCompletion(on: date)
+        }
+        if willComplete {
+            completionSound.playChime()
         }
         try? modelContext.save()
         SharedStore.notifyWidgets()
