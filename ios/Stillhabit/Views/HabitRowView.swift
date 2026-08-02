@@ -172,8 +172,13 @@ struct HabitRowView: View {
     /// The streak count with a unit suffix appropriate to the cadence —
     /// "d" for daily/specific-days habits, "w" for weekly-target habits
     /// whose streak counts consecutive target-metting weeks.
-    private var streakLabel: String? {
-        let streak = habit.currentStreak
+    ///
+    /// Takes the streak as a parameter rather than reading `habit.currentStreak`
+    /// itself: that property walks backwards through the calendar one day at a
+    /// time, and the card used to recompute it three separate times on every
+    /// single body evaluation — during drags, ripples, and timer ticks that is
+    /// hundreds of `Calendar` round-trips a second on the main thread.
+    private func streakLabel(_ streak: Int) -> String? {
         guard streak > 0 else { return nil }
         if case .weeklyTarget = habit.cadence {
             return "\(streak)w"
@@ -184,8 +189,7 @@ struct HabitRowView: View {
     /// Whether the streak is long enough to warrant a slightly warmer, more
     /// prominent flame — 7+ for day streaks, 2+ for week streaks (since
     /// weekly streaks are harder to sustain).
-    private var isLongStreak: Bool {
-        let streak = habit.currentStreak
+    private func isLongStreak(_ streak: Int) -> Bool {
         guard streak > 0 else { return false }
         if case .weeklyTarget = habit.cadence {
             return streak >= 2
@@ -253,7 +257,11 @@ struct HabitRowView: View {
     // MARK: - Card
 
     private var card: some View {
-        HStack(spacing: 0) {
+        // Computed once per body evaluation and threaded through everything
+        // that needs it, rather than re-derived per subview.
+        let streak = habit.isAlive ? habit.currentStreak : 0
+
+        return HStack(spacing: 0) {
             if allowsDragReorder, !isEditing {
                 dragHandle
                     .padding(.leading, 8)
@@ -281,8 +289,8 @@ struct HabitRowView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topTrailing) {
-            if let streakLabel {
-                streakBadge(streakLabel)
+            if let label = streakLabel(streak) {
+                streakBadge(label, isLong: isLongStreak(streak))
             }
         }
         .background(cardBackground)
@@ -321,7 +329,7 @@ struct HabitRowView: View {
         .simultaneousGesture(drag)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(habit.title)
-        .accessibilityValue(accessibilityValueText)
+        .accessibilityValue(accessibilityValueText(streak: streak))
         .accessibilityAction(named: "Open details") { onOpen() }
         .accessibilityAction(named: isDoneToday ? "Mark incomplete" : "Mark complete") { toggle() }
         .accessibilityAction(named: "Edit name and goal") { beginEditing() }
@@ -337,9 +345,9 @@ struct HabitRowView: View {
     /// corner. The flame icon gives an immediate visual hook for motivation
     /// while staying quiet — terracotta on rest, softened on-accent when done.
     /// Longer streaks get a slightly fuller flame symbol as a gentle reward.
-    private func streakBadge(_ label: String) -> some View {
+    private func streakBadge(_ label: String, isLong: Bool) -> some View {
         HStack(spacing: 3) {
-            Image(systemName: isLongStreak ? "flame.fill" : "flame")
+            Image(systemName: isLong ? "flame.fill" : "flame")
                 .font(.system(size: 10, weight: .medium))
             Text(label)
                 .font(DesignSystem.Typography.smallNumber)
@@ -348,7 +356,7 @@ struct HabitRowView: View {
         .foregroundStyle(
             isEffectivelyDone
                 ? DesignSystem.Colors.onAccent.opacity(0.72)
-                : isLongStreak
+                : isLong
                     ? DesignSystem.Colors.terracotta
                     : DesignSystem.Colors.softOchre
         )
@@ -421,12 +429,11 @@ struct HabitRowView: View {
             }
     }
 
-    private var accessibilityValueText: String {
+    private func accessibilityValueText(streak: Int) -> String {
         let base = isEffectivelyDone
             ? "Completed today\(lastCompletionLabel.map { ", \($0)" } ?? "")"
             : "Not completed today\(lastCompletionLabel.map { ", last done \($0)" } ?? "")"
         let streakSuffix: String = {
-            let streak = habit.currentStreak
             guard streak > 0 else { return "" }
             if case .weeklyTarget = habit.cadence {
                 return ", \(streak) week streak"

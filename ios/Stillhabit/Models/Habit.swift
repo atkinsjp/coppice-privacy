@@ -365,7 +365,10 @@ extension Habit {
                 cursor = yesterday
             }
             var streak = 0
-            while completedDays.contains(cursor) {
+            // A streak can never be longer than the number of days actually
+            // recorded, so the walk is bounded by the data rather than trusting
+            // the loop condition to fail. See `Self.streakIterationLimit`.
+            while streak < completedDays.count, completedDays.contains(cursor) {
                 streak += 1
                 guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
                 cursor = previous
@@ -384,7 +387,7 @@ extension Habit {
                 cursor = prev
             }
             var streak = 0
-            while completedDays.contains(cursor) {
+            while streak < completedDays.count, completedDays.contains(cursor) {
                 streak += 1
                 guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { break }
                 cursor = prev
@@ -392,13 +395,18 @@ extension Habit {
             return streak
 
         case .weeklyTarget(let target):
+            // A non-positive target makes `completionsThisWeek >= target`
+            // permanently true, which would walk backwards through the calendar
+            // forever and wedge the main thread. The UI clamps the goal to
+            // 1...6, but stored data is not trusted to have done so.
+            guard target > 0 else { return 0 }
             var cursor = Date()
             if completionsThisWeek(on: cursor) < target {
                 guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { return 0 }
                 cursor = lastWeek
             }
             var streak = 0
-            while completionsThisWeek(on: cursor) >= target {
+            while streak < Self.streakIterationLimit, completionsThisWeek(on: cursor) >= target {
                 streak += 1
                 guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { break }
                 cursor = lastWeek
@@ -406,6 +414,12 @@ extension Habit {
             return streak
         }
     }
+
+    /// Hard ceiling on any backwards calendar walk. Ten years of weeks is far
+    /// beyond any real streak; its only job is to guarantee termination if the
+    /// stored data is ever inconsistent, because these loops run on the main
+    /// thread during view rendering and a hang there kills the app.
+    private static let streakIterationLimit = 520
 
     /// Longest run of consecutive completed scheduled days, ever. Schedule-aware:
     /// for `.specificDays`, runs are counted across scheduled days only; for
@@ -454,12 +468,15 @@ extension Habit {
             return best
 
         case .weeklyTarget(let target):
-            guard let startWeek = calendar.dateInterval(of: .weekOfYear, for: createdAt)?.start,
+            guard target > 0,
+                  let startWeek = calendar.dateInterval(of: .weekOfYear, for: createdAt)?.start,
                   let thisWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start else { return 0 }
             var best = 0
             var run = 0
             var cursor = startWeek
-            while cursor <= thisWeek {
+            var iterations = 0
+            while cursor <= thisWeek, iterations < Self.streakIterationLimit {
+                iterations += 1
                 if completionsThisWeek(on: cursor) >= target {
                     run += 1
                     best = max(best, run)

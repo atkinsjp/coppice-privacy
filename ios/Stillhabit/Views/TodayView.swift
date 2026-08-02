@@ -29,28 +29,74 @@ struct TodayView: View {
         allHabits.filter { $0.isAlive && $0.isScheduledForToday }
     }
 
-    /// The visible habit list, ordered by the current sort mode. `.manual`
-    /// uses the persisted `order` property; the completion modes sort by
-    /// today's completion state (with `order` as a stable tiebreaker).
-    private var habits: [Habit] {
+    /// Everything the screen needs about today, derived in a single pass.
+    ///
+    /// Each of these used to be its own computed property, and SwiftUI reads
+    /// them several times per body evaluation — the list, the completion
+    /// count, the progress bar, the "all complete" trigger, and the 7-day
+    /// dot row each re-scanned every habit's `completedDates` from scratch,
+    /// and the completion sort modes re-derived the done flag inside the
+    /// comparator on every comparison. During a drag or a ripple that runs at
+    /// display rate on the main thread. One pass now feeds all of them.
+    private struct TodaySnapshot {
+        let habits: [Habit]
+        let completedCount: Int
+        let progress: Double
+        let allComplete: Bool
+        /// Per-day overall completion ratio for the trailing 7 days, oldest
+        /// first (today last).
+        let weekRatios: [Double]
+    }
+
+    private func makeSnapshot() -> TodaySnapshot {
+        let calendar = Calendar.current
+        let now = Date()
+        // `isAlive` filters out models that were deleted but are still being
+        // held by SwiftUI during their removal transition — reading their
+        // properties would raise NSObjectInaccessibleException and abort.
+        let live = allHabits.filter { $0.isAlive }
+
+        let entries: [(habit: Habit, isDone: Bool)] = live
+            .filter { $0.isScheduled(on: now) }
+            .map { (habit: $0, isDone: $0.isCompleted(on: now) || $0.weeklyTargetMet) }
+
+        let sorted: [(habit: Habit, isDone: Bool)]
         switch sortMode {
         case .manual:
-            return scheduledHabits.sorted { $0.order < $1.order }
+            sorted = entries.sorted { $0.habit.order < $1.habit.order }
         case .incompleteFirst:
-            return scheduledHabits.sorted { a, b in
-                let aDone = a.isCompleted(on: Date()) || a.weeklyTargetMet
-                let bDone = b.isCompleted(on: Date()) || b.weeklyTargetMet
-                if aDone == bDone { return a.order < b.order }
-                return !aDone && bDone
+            sorted = entries.sorted { a, b in
+                a.isDone == b.isDone ? a.habit.order < b.habit.order : (!a.isDone && b.isDone)
             }
         case .completeFirst:
-            return scheduledHabits.sorted { a, b in
-                let aDone = a.isCompleted(on: Date()) || a.weeklyTargetMet
-                let bDone = b.isCompleted(on: Date()) || b.weeklyTargetMet
-                if aDone == bDone { return a.order < b.order }
-                return aDone && !bDone
+            sorted = entries.sorted { a, b in
+                a.isDone == b.isDone ? a.habit.order < b.habit.order : (a.isDone && !b.isDone)
             }
         }
+
+        let completedCount = sorted.reduce(into: 0) { $0 += $1.isDone ? 1 : 0 }
+        let total = sorted.count
+
+        let today = calendar.startOfDay(for: now)
+        let weekRatios: [Double] = (0..<7).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
+            var scheduled = 0
+            var done = 0
+            for habit in live where habit.isScheduled(on: day) {
+                scheduled += 1
+                if habit.isCompleted(on: day) { done += 1 }
+            }
+            guard scheduled > 0 else { return 0 }
+            return Double(done) / Double(scheduled)
+        }
+
+        return TodaySnapshot(
+            habits: sorted.map(\.habit),
+            completedCount: completedCount,
+            progress: total == 0 ? 0 : Double(completedCount) / Double(total),
+            allComplete: total > 0 && completedCount == total,
+            weekRatios: weekRatios
+        )
     }
 
     /// The single presented sheet, if any.
@@ -92,37 +138,8 @@ struct TodayView: View {
     /// after the view is torn down.
     @State private var stillMomentTask: Task<Void, Never>?
 
-    private var completedCount: Int {
-        habits.filter { $0.isCompleted(on: Date()) || $0.weeklyTargetMet }.count
-    }
-
-    private var progress: Double {
-        habits.isEmpty ? 0 : Double(completedCount) / Double(habits.count)
-    }
-
-    private var allComplete: Bool {
-        !habits.isEmpty && completedCount == habits.count
-    }
-
     private var dateLine: String {
         Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased()
-    }
-
-    /// Per-day overall completion ratio for the trailing 7 days, oldest first
-    /// (today last). Each value is `completedScheduled / scheduled` across all
-    /// non-archived habits for that calendar day. Days with no scheduled habits
-    /// default to 0 so the dot stays faint — a quiet visual rest day.
-    private var weekCompletionRatios: [Double] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let liveHabits = allHabits.filter { $0.isAlive }
-        return (0..<7).reversed().map { offset in
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
-            let scheduled = liveHabits.filter { $0.isScheduled(on: day) }
-            guard !scheduled.isEmpty else { return 0 }
-            let done = scheduled.filter { $0.isCompleted(on: day) }.count
-            return Double(done) / Double(scheduled.count)
-        }
     }
 
     /// Short single-letter weekday initials for the trailing 7 days, oldest
@@ -139,17 +156,19 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
+        let snapshot = makeSnapshot()
 
-                if habits.isEmpty {
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                header(weekRatios: snapshot.weekRatios, habitCount: snapshot.habits.count)
+
+                if snapshot.habits.isEmpty {
                     emptyState
                 } else {
-                    progressSection
+                    progressSection(completed: snapshot.completedCount, total: snapshot.habits.count, progress: snapshot.progress)
 
                     LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
-                        ForEach(Array(habits.enumerated()), id: \.element.id) { index, habit in
+                        ForEach(Array(snapshot.habits.enumerated()), id: \.element.id) { index, habit in
                             HabitRowView(
                                 habit: habit,
                                 showsWeeklyProgress: true,
@@ -195,19 +214,19 @@ struct TodayView: View {
                     .allowsHitTesting(false)
             }
         }
-        .animation(.easeInOut(duration: 0.8), value: allComplete)
+        .animation(.easeInOut(duration: 0.8), value: snapshot.allComplete)
         .animation(.easeInOut(duration: 0.8), value: isStillMomentActive)
         .sheet(item: $route) { destination in
             sheetContent(for: destination)
         }
         .onAppear {
             ambientPlayer.startIfEnabled()
-            wasAllComplete = allComplete
+            wasAllComplete = snapshot.allComplete
         }
         .onDisappear {
             stillMomentTask?.cancel()
         }
-        .onChange(of: allComplete) { oldValue, newValue in
+        .onChange(of: snapshot.allComplete) { oldValue, newValue in
             guard !oldValue, newValue else { return }
             triggerStillMoment()
         }
@@ -225,8 +244,8 @@ struct TodayView: View {
     }
 
     /// Opens the add sheet, or the paywall when the free limit is reached.
-    private func requestNewHabit() {
-        if !store.isPremium && habits.count >= StoreViewModel.freeHabitLimit {
+    private func requestNewHabit(habitCount: Int) {
+        if !store.isPremium && habitCount >= StoreViewModel.freeHabitLimit {
             present(.paywall)
         } else {
             present(.addHabit)
@@ -283,7 +302,7 @@ struct TodayView: View {
     /// trailing controls — a primary "+" button and a single options menu
     /// that gathers sort, analytics, and ambient sound. Generous top
     /// padding keeps the crest breathable.
-    private var header: some View {
+    private func header(weekRatios: [Double], habitCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(dateLine)
                 .font(DesignSystem.Typography.overline)
@@ -320,7 +339,7 @@ struct TodayView: View {
                     optionsMenu
 
                     Button {
-                        requestNewHabit()
+                        requestNewHabit(habitCount: habitCount)
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .medium))
@@ -335,7 +354,7 @@ struct TodayView: View {
                 }
             }
 
-            weekDotCalendar
+            weekDotCalendar(ratios: weekRatios)
         }
     }
 
@@ -347,8 +366,7 @@ struct TodayView: View {
     /// rhythm of consistency. Today's dot carries a thin sage ring so the
     /// current day is quietly anchored. Empty days (no scheduled habits) sit as
     /// faint hollow dots, a visual rest rather than a gap.
-    private var weekDotCalendar: some View {
-        let ratios = weekCompletionRatios
+    private func weekDotCalendar(ratios: [Double]) -> some View {
         let initials = weekDayInitials
         let todayIndex = ratios.count - 1
 
@@ -522,13 +540,13 @@ struct TodayView: View {
 
     // MARK: - Progress
 
-    private var progressSection: some View {
+    private func progressSection(completed: Int, total: Int, progress: Double) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 5) {
-                Text("\(completedCount) of \(habits.count)")
+                Text("\(completed) of \(total)")
                     .font(DesignSystem.Typography.number)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text(completedCount == habits.count ? "— a quiet day, well kept" : "complete")
+                Text(completed == total ? "— a quiet day, well kept" : "complete")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
@@ -565,7 +583,7 @@ struct TodayView: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
             Button {
-                requestNewHabit()
+                requestNewHabit(habitCount: 0)
             } label: {
                 Text("Begin your first habit")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
