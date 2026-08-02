@@ -216,6 +216,7 @@ struct TodayView: View {
             triggerStillMoment()
         }
         .onChange(of: scenePhase) { _, newPhase in
+            CrashDiagnostics.note("scene phase \(newPhase)")
             switch newPhase {
             case .active:
                 ambientPlayer.resume()
@@ -242,6 +243,7 @@ struct TodayView: View {
     /// that aborts, so the first one through wins.
     private func present(_ destination: TodayRoute) {
         guard route == nil else { return }
+        CrashDiagnostics.note("present \(destination.id)")
         route = destination
     }
 
@@ -257,7 +259,13 @@ struct TodayView: View {
             if let habit = allHabits.first(where: { $0.isAlive && $0.id == habitID }) {
                 HabitDetailView(habit: habit)
             } else {
-                Color.clear.onAppear { route = nil }
+                // Clearing the route from `onAppear` would dismiss the sheet
+                // in the middle of its own presentation transaction — an
+                // uncatchable UIKit exception. Wait one turn.
+                Color.clear.task {
+                    try? await Task.sleep(for: .milliseconds(60))
+                    route = nil
+                }
             }
         case .paywall:
             PaywallView()

@@ -63,7 +63,14 @@ struct HabitDetailView: View {
             // NSObjectInaccessibleException and aborts, so the sheet empties
             // itself and closes instead.
             if !habit.isAlive {
-                Color.clear.onAppear { dismiss() }
+                // Dismissing from inside `onAppear` tears the sheet down in the
+                // middle of its own presentation transaction, which UIKit
+                // answers with an uncatchable exception. One run-loop turn of
+                // slack lets the presentation settle first.
+                Color.clear.task {
+                    try? await Task.sleep(for: .milliseconds(60))
+                    dismiss()
+                }
             } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 36) {
@@ -371,7 +378,9 @@ struct HabitDetailView: View {
                     }
                 }
         }
-        .buttonStyle(.stillTactileWave(accent: accent))
+        // Ninety cells, so the featherweight press style is used instead of
+        // the full ripple — ninety ripple layers is a real rendering cost.
+        .buttonStyle(.stillQuietPress)
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isDone)
         .animation(.easeOut(duration: 0.25), value: progress)
         .accessibilityLabel(date.formatted(.dateTime.month(.wide).day()))

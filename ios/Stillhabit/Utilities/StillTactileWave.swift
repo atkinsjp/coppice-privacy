@@ -4,11 +4,42 @@
 //
 //  The signature Stillhabit tactile interaction.
 //  Press: the surface settles down to 0.97 on a snappy spring.
-//  Release: a medium haptic pulse and a soft, blurred ripple ring
-//  that travels outward from the exact touch point, like water.
+//  Release: a medium haptic pulse and a soft ripple ring that travels
+//  outward from the surface, like water.
+//
+//  Two rules keep this cheap enough to attach to *every* control in the app
+//  (the 90-day heatmap alone renders ninety of them):
+//
+//  1. **No offscreen render passes.** The ring used to be drawn with
+//     `.blur(radius:)`, which forces Core Animation to allocate an offscreen
+//     buffer per ripple. On the cloud simulator those allocations go through a
+//     sandbox that already reports `IOSurfaceClientSetSurfaceNotify failed`,
+//     and a failed surface allocation aborts the process from inside Core
+//     Animation — a SIGABRT with no Swift frames. Softness now comes from
+//     layered strokes with falling opacity, which composite in place.
+//
+//  2. **Nothing is attached while idle.** The overlay (and its
+//     `GeometryReader`) only exists while a ripple is actually animating, so a
+//     screen full of buttons costs nothing until one is pressed.
 //
 
 import SwiftUI
+import UIKit
+
+// MARK: - Shared haptics
+
+/// One prepared impact generator for the whole app. Allocating a fresh
+/// `UIImpactFeedbackGenerator` per press (and there is one per button, per tap)
+/// churns the Taptic client connection for no benefit.
+@MainActor
+private enum TactileHaptics {
+    private static let medium = UIImpactFeedbackGenerator(style: .medium)
+
+    static func mediumTap() {
+        medium.impactOccurred()
+        medium.prepare()
+    }
+}
 
 // MARK: - Ripple model
 
@@ -19,6 +50,8 @@ private struct TactileRipple: Identifiable, Equatable {
 
 // MARK: - A single expanding ring
 
+/// Three concentric strokes with falling opacity read as one soft, diffused
+/// ring — the same visual as a blur, without the offscreen buffer.
 private struct TactileRippleRing: View {
     let accent: Color
     let diameter: CGFloat
@@ -26,17 +59,19 @@ private struct TactileRippleRing: View {
     @State private var isExpanding = false
 
     var body: some View {
-        Circle()
-            .stroke(accent, lineWidth: 4)
-            .blur(radius: 2.5)
-            .frame(width: diameter, height: diameter)
-            .scaleEffect(isExpanding ? 1.4 : 0.1)
-            .opacity(isExpanding ? 0 : 0.85)
-            .onAppear {
-                withAnimation(.easeOut(duration: 0.55)) {
-                    isExpanding = true
-                }
+        ZStack {
+            Circle().stroke(accent.opacity(0.20), lineWidth: 7)
+            Circle().stroke(accent.opacity(0.45), lineWidth: 4)
+            Circle().stroke(accent.opacity(0.85), lineWidth: 1.5)
+        }
+        .frame(width: diameter, height: diameter)
+        .scaleEffect(isExpanding ? 1.4 : 0.1)
+        .opacity(isExpanding ? 0 : 0.85)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.55)) {
+                isExpanding = true
             }
+        }
     }
 }
 
@@ -65,11 +100,22 @@ private struct TactileRippleOverlay: View {
     }
 }
 
+// MARK: - Ripple bookkeeping
+
+/// Keeps at most a couple of rings alive at once. A user hammering a control
+/// (or a heatmap cell) could otherwise stack dozens of animating layers.
+private func appendRipple(_ ripple: TactileRipple, to ripples: inout [TactileRipple]) {
+    ripples.append(ripple)
+    if ripples.count > 3 {
+        ripples.removeFirst(ripples.count - 3)
+    }
+}
+
 // MARK: - Button style
 
 /// Stillhabit's signature fluid button style: 0.97 press-scale on a
 /// snappy spring, a medium haptic pulse at the instant of release,
-/// and an outward water-ripple ring from the touch point.
+/// and an outward water-ripple ring.
 struct StillTactileWaveButtonStyle: ButtonStyle {
     var accent: Color = DesignSystem.Colors.sage
 
@@ -89,17 +135,23 @@ private struct TactileWaveBody: View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
-            .overlay(TactileRippleOverlay(ripples: ripples, accent: accent))
+            .overlay {
+                // Only materialize the ripple layer (and its GeometryReader)
+                // while something is actually animating.
+                if !ripples.isEmpty {
+                    TactileRippleOverlay(ripples: ripples, accent: accent)
+                }
+            }
             .onChange(of: configuration.isPressed) { wasPressed, isPressed in
                 guard wasPressed, !isPressed else { return }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                TactileHaptics.mediumTap()
                 spawnRipple(at: touchLocation)
             }
     }
 
     private func spawnRipple(at point: CGPoint) {
         let ripple = TactileRipple(center: point)
-        ripples.append(ripple)
+        appendRipple(ripple, to: &ripples)
         Task {
             try? await Task.sleep(for: .milliseconds(700))
             ripples.removeAll { $0.id == ripple.id }
@@ -114,10 +166,33 @@ extension ButtonStyle where Self == StillTactileWaveButtonStyle {
     }
 }
 
+// MARK: - Quiet press style (dense grids)
+
+/// A featherweight alternative for surfaces that appear by the dozen — the
+/// 90-day heatmap, colour swatch grids. Same tactile language (press-scale +
+/// haptic), no per-cell ripple layer.
+struct StillQuietPressStyle: ButtonStyle {
+    var pressedScale: CGFloat = 0.88
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? pressedScale : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.65), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { wasPressed, isPressed in
+                guard wasPressed, !isPressed else { return }
+                TactileHaptics.mediumTap()
+            }
+    }
+}
+
+extension ButtonStyle where Self == StillQuietPressStyle {
+    /// `.buttonStyle(.stillQuietPress)` — for dense grids of small controls.
+    static var stillQuietPress: StillQuietPressStyle { StillQuietPressStyle() }
+}
+
 // MARK: - View modifier (for gesture-driven surfaces like habit cards)
 
 /// Fires the signature ripple + haptic whenever `trigger` changes.
-/// The ripple originates from the last known touch point on the surface.
 struct StillTactileWaveModifier<Trigger: Equatable>: ViewModifier {
     let accent: Color
     let trigger: Trigger
@@ -128,10 +203,14 @@ struct StillTactileWaveModifier<Trigger: Equatable>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(TactileRippleOverlay(ripples: ripples, accent: accent))
+            .overlay {
+                if !ripples.isEmpty {
+                    TactileRippleOverlay(ripples: ripples, accent: accent)
+                }
+            }
             .onChange(of: trigger) { _, _ in
                 if playsHaptic {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    TactileHaptics.mediumTap()
                 }
                 spawnRipple(at: touchLocation)
             }
@@ -139,7 +218,7 @@ struct StillTactileWaveModifier<Trigger: Equatable>: ViewModifier {
 
     private func spawnRipple(at point: CGPoint) {
         let ripple = TactileRipple(center: point)
-        ripples.append(ripple)
+        appendRipple(ripple, to: &ripples)
         Task {
             try? await Task.sleep(for: .milliseconds(700))
             ripples.removeAll { $0.id == ripple.id }
