@@ -25,6 +25,11 @@ enum DesignSystem {
         /// Muted stone gray for supporting text.
         static let textSecondary = Color(lightHex: "9B998F", darkHex: "8D908B")
 
+        /// Deep matte charcoal for small text that must stay legible over the
+        /// earthy wave background (weekday initials, dense micro-labels).
+        /// Inverts to a bright warm ivory in dark mode so contrast holds both ways.
+        static let textStrong = Color(lightHex: "1C1E1D", darkHex: "F2F0EA")
+
         /// Ivory used on top of accent fills (buttons, checkmarks).
         /// Slightly warmer in dark mode so it sits calmly on saturated fills.
         static let onAccent = Color(lightHex: "F9F8F6", darkHex: "F4F2EC")

@@ -257,10 +257,10 @@ struct TodayView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("StillHabit")
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.85)
+                            .minimumScaleFactor(0.7)
 
                         Text("Calm Habit Tracker")
                             .font(.system(size: 14, weight: .regular))
@@ -315,12 +315,9 @@ struct TodayView: View {
             ForEach(Array(ratios.enumerated()), id: \.offset) { index, ratio in
                 VStack(spacing: 5) {
                     Text(initials[index])
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(
-                            index == todayIndex
-                                ? DesignSystem.Colors.sage
-                                : DesignSystem.Colors.textSecondary.opacity(0.7)
-                        )
+                        .font(.system(size: 10, weight: index == todayIndex ? .heavy : .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textStrong)
+                        .opacity(index == todayIndex ? 1 : 0.9)
 
                     ZStack {
                         if ratio >= 1 {
