@@ -51,6 +51,12 @@ struct MonthRhythmGridView: View {
         days.filter { habit.progress(on: $0) >= 1 }.count
     }
 
+    /// Completion rate across the trailing 30 days, rounded to a whole percent.
+    private var completionPercent: Int {
+        guard dayCount > 0 else { return 0 }
+        return Int(((Double(completedCount) / Double(dayCount)) * 100).rounded())
+    }
+
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: cellSpacing), count: 7)
     }
@@ -71,6 +77,8 @@ struct MonthRhythmGridView: View {
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(completedCount)))
                     .animation(.spring(response: 0.45, dampingFraction: 0.8), value: completedCount)
+
+                percentBadge
             }
 
             LazyVGrid(columns: gridColumns, spacing: 4) {
@@ -99,6 +107,29 @@ struct MonthRhythmGridView: View {
             guard !hasAppeared else { return }
             hasAppeared = true
         }
+    }
+
+    /// A quiet capsule showing the 30-day completion rate.
+    private var percentBadge: some View {
+        Text("\(completionPercent)%")
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .contentTransition(.numericText(value: Double(completionPercent)))
+            .foregroundStyle(accent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(accent.opacity(0.14))
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(accent.opacity(0.18), lineWidth: 0.5)
+                    }
+            }
+            .animation(.spring(response: 0.45, dampingFraction: 0.8), value: completionPercent)
+            .accessibilityElement()
+            .accessibilityLabel("30 day completion rate")
+            .accessibilityValue("\(completionPercent) percent")
     }
 
     private func cell(for date: Date, index: Int) -> some View {
