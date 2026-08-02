@@ -18,6 +18,8 @@ struct ReminderPicker: View {
     @Binding var time: Date
     /// The tone the reminder notification plays.
     @Binding var sound: ReminderSound
+    /// The vibration signature the reminder plays.
+    @Binding var haptic: ReminderHaptic
 
     let accent: Color
     var label: String = "Reminder"
@@ -28,6 +30,9 @@ struct ReminderPicker: View {
     /// The tone most recently auditioned, used to bounce its icon.
     @State private var previewingSound: ReminderSound?
     @State private var previewPulse: Int = 0
+    /// The signature most recently felt, used to bounce its icon.
+    @State private var previewingHaptic: ReminderHaptic?
+    @State private var hapticPulse: Int = 0
 
     /// Gentle time presets — morning light, midday pause, evening wind-down.
     private static let presets: [(name: String, symbol: String, minute: Int)] = [
@@ -71,6 +76,7 @@ struct ReminderPicker: View {
                 timeRow
                 presetRow
                 soundSection
+                hapticSection
 
                 if reminders.isDenied {
                     deniedNotice
@@ -254,6 +260,86 @@ struct ReminderPicker: View {
         }
         .buttonStyle(.stillTactileWave(accent: accent))
         .accessibilityLabel("\(option.displayName) reminder sound")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    // MARK: - Haptic
+
+    /// Vibration chooser. Each habit can carry its own rhythm, so a nudge is
+    /// recognizable by feel alone — pocket, sound off, screen down.
+    private var hapticSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Vibration")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Spacer()
+
+                Text(haptic.rhythmDescription)
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary.opacity(0.7))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .contentTransition(.opacity)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 108), spacing: 8)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(ReminderHaptic.allCases) { option in
+                    hapticChip(option)
+                }
+            }
+
+            Text("Felt when the reminder arrives while Stillhabit is open, and when you open it from the nudge.")
+                .font(.system(size: 11))
+                .foregroundStyle(DesignSystem.Colors.textSecondary.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func hapticChip(_ option: ReminderHaptic) -> some View {
+        let isActive = option == haptic
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                haptic = option
+            }
+            previewingHaptic = option
+            hapticPulse += 1
+            ReminderHapticLibrary.shared.play(option)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: option.symbolName)
+                    .font(.system(size: 12, weight: .medium))
+                    .symbolEffect(.bounce, value: previewingHaptic == option ? hapticPulse : 0)
+
+                Text(option.displayName)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(isActive ? DesignSystem.Colors.onAccent : DesignSystem.Colors.textSecondary)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .frame(maxWidth: .infinity)
+            .background {
+                if isActive {
+                    Capsule().fill(accent)
+                } else {
+                    Capsule()
+                        .fill(DesignSystem.Colors.card)
+                        .overlay {
+                            Capsule().strokeBorder(DesignSystem.Colors.textSecondary.opacity(0.16), lineWidth: 0.75)
+                        }
+                }
+            }
+        }
+        .buttonStyle(.stillTactileWave(accent: accent))
+        .accessibilityLabel("\(option.displayName) vibration, \(option.rhythmDescription)")
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 

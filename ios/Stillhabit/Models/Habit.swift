@@ -104,6 +104,10 @@ final class Habit {
     /// resolves to the app's signature chime, so habits created before this
     /// setting existed still sound like Stillhabit rather than a generic alert.
     var reminderSoundRaw: String?
+    /// Raw value of the `ReminderHaptic` signature this habit's reminder plays.
+    /// nil resolves to the app's breath rhythm, so a habit can be recognized by
+    /// feel alone even with the ringer off.
+    var reminderHapticRaw: String?
 
     init(
         title: String,
@@ -496,6 +500,12 @@ extension Habit {
     var reminderSound: ReminderSound {
         get { ReminderSound.resolve(reminderSoundRaw) }
         set { reminderSoundRaw = newValue.rawValue }
+    }
+
+    /// The vibration signature this habit's reminder plays, resolved from storage.
+    var reminderHaptic: ReminderHaptic {
+        get { ReminderHaptic.resolve(reminderHapticRaw) }
+        set { reminderHapticRaw = newValue.rawValue }
     }
 
     /// The reminder time projected onto today's date, suitable for binding to

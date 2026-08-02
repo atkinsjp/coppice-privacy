@@ -62,6 +62,12 @@ final class Habit {
     /// Minutes since local midnight for the habit's reminder, or nil.
     /// Must stay schema-identical with the app target.
     var reminderMinuteOfDay: Int?
+    /// Raw value of the reminder tone. Must stay schema-identical with the app
+    /// target; the widget itself never reads it.
+    var reminderSoundRaw: String?
+    /// Raw value of the reminder haptic signature. Must stay schema-identical
+    /// with the app target; the widget itself never reads it.
+    var reminderHapticRaw: String?
 
     init(
         title: String,

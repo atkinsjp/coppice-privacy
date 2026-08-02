@@ -33,6 +33,7 @@ struct HabitDetailView: View {
     @State private var isReminderEnabled: Bool = false
     @State private var reminderTime: Date = Habit.date(fromMinuteOfDay: 8 * 60)
     @State private var reminderSound: ReminderSound = .chime
+    @State private var reminderHaptic: ReminderHaptic = .breath
     @State private var hasSeededReminder: Bool = false
 
     private let dayCount = 90
@@ -208,12 +209,14 @@ struct HabitDetailView: View {
                     .contentTransition(.opacity)
                     .animation(.easeOut(duration: 0.2), value: habit.reminderMinuteOfDay)
                     .animation(.easeOut(duration: 0.2), value: habit.reminderSoundRaw)
+                    .animation(.easeOut(duration: 0.2), value: habit.reminderHapticRaw)
             }
 
             ReminderPicker(
                 isEnabled: $isReminderEnabled,
                 time: $reminderTime,
                 sound: $reminderSound,
+                haptic: $reminderHaptic,
                 accent: accent,
                 label: "Daily nudge",
                 cadence: editingCadence
@@ -249,12 +252,20 @@ struct HabitDetailView: View {
             guard hasSeededReminder, isReminderEnabled else { return }
             commitReminder()
         }
+        .onChange(of: reminderHaptic) { _, _ in
+            guard hasSeededReminder, isReminderEnabled else { return }
+            commitReminder()
+        }
     }
 
-    /// "7:30 AM · Bowl" when a reminder is set, otherwise "None".
+    /// "7:30 AM · Bowl · Breath" when a reminder is set, otherwise "None".
     private var reminderHeadline: String {
         guard let summary = habit.reminderSummary else { return "None" }
-        return summary + " · " + habit.reminderSound.displayName
+        var parts = [summary, habit.reminderSound.displayName]
+        if habit.reminderHaptic != .still {
+            parts.append(habit.reminderHaptic.displayName)
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Seeds the reminder editor from the habit's stored reminder.
@@ -262,6 +273,7 @@ struct HabitDetailView: View {
         isReminderEnabled = habit.hasReminder
         reminderTime = habit.reminderTimeToday
         reminderSound = habit.reminderSound
+        reminderHaptic = habit.reminderHaptic
         hasSeededReminder = true
     }
 
@@ -270,10 +282,14 @@ struct HabitDetailView: View {
     private func commitReminder() {
         let resolved: Int? = isReminderEnabled ? Habit.minuteOfDay(from: reminderTime) : nil
         let resolvedSound: ReminderSound = isReminderEnabled ? reminderSound : habit.reminderSound
-        guard resolved != habit.reminderMinuteOfDay || resolvedSound != habit.reminderSound else { return }
+        let resolvedHaptic: ReminderHaptic = isReminderEnabled ? reminderHaptic : habit.reminderHaptic
+        guard resolved != habit.reminderMinuteOfDay
+            || resolvedSound != habit.reminderSound
+            || resolvedHaptic != habit.reminderHaptic else { return }
 
         habit.reminderMinuteOfDay = resolved
         habit.reminderSound = resolvedSound
+        habit.reminderHaptic = resolvedHaptic
         try? modelContext.save()
         Task { await ReminderService.shared.reschedule(for: habit) }
     }

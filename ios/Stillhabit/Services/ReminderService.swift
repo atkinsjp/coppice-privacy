@@ -27,6 +27,8 @@ nonisolated struct ReminderPlan: Sendable, Equatable {
     let weekdays: [Int]?
     /// The tone this reminder plays.
     let sound: ReminderSound
+    /// The vibration signature this reminder plays when it surfaces in-app.
+    let haptic: ReminderHaptic
 
     /// Builds a plan from a habit, or returns nil when the habit has no
     /// reminder, is resting, or has an unschedulable (empty) weekday set.
@@ -39,6 +41,7 @@ nonisolated struct ReminderPlan: Sendable, Equatable {
         hour = clamped / 60
         minute = clamped % 60
         sound = habit.reminderSound
+        haptic = habit.reminderHaptic
 
         switch habit.cadence {
         case .daily, .weeklyTarget:
@@ -143,15 +146,17 @@ final class ReminderService {
     // MARK: - Private
 
     /// Renders every custom reminder tone to disk so the first scheduled
-    /// notification never races the file write.
+    /// notification never races the file write, and warms the haptic engine
+    /// so a signature vibration fires without start-up latency.
     func prepareSounds() {
         ReminderSoundLibrary.shared.prepareAll()
+        ReminderHapticLibrary.shared.prepare()
     }
 
     /// Registers the calendar triggers for one plan.
     private func schedule(_ plan: ReminderPlan) async {
         let center = UNUserNotificationCenter.current()
-        let content = Self.makeContent(title: plan.title, sound: plan.sound)
+        let content = Self.makeContent(title: plan.title, sound: plan.sound, haptic: plan.haptic)
 
         var requests: [UNNotificationRequest] = []
         if let weekdays = plan.weekdays {
@@ -192,15 +197,25 @@ final class ReminderService {
 
     /// A quiet, non-nagging notification body in the app's voice, carrying the
     /// habit's chosen tone. A `.silent` choice leaves `sound` nil so the
-    /// reminder arrives as a wordless banner.
-    private static func makeContent(title: String, sound: ReminderSound) -> UNMutableNotificationContent {
+    /// reminder arrives as a wordless banner. The haptic signature rides along
+    /// in `userInfo`, where the presentation delegate picks it up and plays it
+    /// whenever the reminder surfaces inside the app.
+    private static func makeContent(
+        title: String,
+        sound: ReminderSound,
+        haptic: ReminderHaptic
+    ) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = "A quiet moment to return to this."
         content.sound = ReminderSoundLibrary.shared.notificationSound(for: sound)
         content.interruptionLevel = sound == .silent ? .passive : .active
+        content.userInfo = [Self.hapticInfoKey: haptic.rawValue]
         return content
     }
+
+    /// `userInfo` key carrying the reminder's haptic signature.
+    static let hapticInfoKey = "stillhabit.reminder.haptic"
 
     /// Stable identifier for one habit + weekday pairing.
     private static func identifier(for habitID: UUID, weekday: Int?) -> String {
@@ -219,12 +234,32 @@ final class ReminderService {
 }
 
 /// Presents reminders as banners even while Stillhabit is open, so a reminder
-/// that lands mid-session is never silently swallowed.
+/// that lands mid-session is never silently swallowed — and plays the habit's
+/// haptic signature on both surfacing paths: a banner shown in the foreground,
+/// and the user tapping the notification to open the app.
 final class ReminderPresentationDelegate: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        Self.playHaptic(from: notification)
+        return [.banner, .list, .sound]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        Self.playHaptic(from: response.notification)
+    }
+
+    /// Reads the signature out of the notification payload and plays it on the
+    /// main actor. Notifications without a stored signature fall back to the
+    /// app's default rhythm.
+    nonisolated private static func playHaptic(from notification: UNNotification) {
+        let raw = notification.request.content.userInfo[ReminderService.hapticInfoKey] as? String
+        Task { @MainActor in
+            ReminderHapticLibrary.shared.play(rawValue: raw)
+        }
     }
 }
