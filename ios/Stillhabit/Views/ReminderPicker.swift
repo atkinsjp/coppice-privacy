@@ -16,6 +16,8 @@ struct ReminderPicker: View {
     @Binding var isEnabled: Bool
     /// The reminder time. Only the hour and minute are meaningful.
     @Binding var time: Date
+    /// The tone the reminder notification plays.
+    @Binding var sound: ReminderSound
 
     let accent: Color
     var label: String = "Reminder"
@@ -23,6 +25,9 @@ struct ReminderPicker: View {
     var cadence: HabitCadence = .daily
 
     @State private var reminders = ReminderService.shared
+    /// The tone most recently auditioned, used to bounce its icon.
+    @State private var previewingSound: ReminderSound?
+    @State private var previewPulse: Int = 0
 
     /// Gentle time presets — morning light, midday pause, evening wind-down.
     private static let presets: [(name: String, symbol: String, minute: Int)] = [
@@ -65,6 +70,7 @@ struct ReminderPicker: View {
             if isEnabled {
                 timeRow
                 presetRow
+                soundSection
 
                 if reminders.isDenied {
                     deniedNotice
@@ -175,6 +181,79 @@ struct ReminderPicker: View {
         }
         .buttonStyle(.stillTactileWave(accent: accent))
         .accessibilityLabel("\(preset.name) reminder")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    // MARK: - Sound
+
+    /// Tone chooser. Tapping a tone selects it and plays it once, so the user
+    /// can tell a Stillhabit nudge apart from every other alert on the phone.
+    private var soundSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Sound")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Spacer()
+
+                Text("Tap to hear")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary.opacity(0.7))
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 98), spacing: 8)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(ReminderSound.allCases) { option in
+                    soundChip(option)
+                }
+            }
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func soundChip(_ option: ReminderSound) -> some View {
+        let isActive = option == sound
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                sound = option
+            }
+            previewingSound = option
+            previewPulse += 1
+            ReminderSoundLibrary.shared.preview(option)
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: option.symbolName)
+                    .font(.system(size: 12, weight: .medium))
+                    .symbolEffect(.bounce, value: previewingSound == option ? previewPulse : 0)
+
+                Text(option.displayName)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(isActive ? DesignSystem.Colors.onAccent : DesignSystem.Colors.textSecondary)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .frame(maxWidth: .infinity)
+            .background {
+                if isActive {
+                    Capsule().fill(accent)
+                } else {
+                    Capsule()
+                        .fill(DesignSystem.Colors.card)
+                        .overlay {
+                            Capsule().strokeBorder(DesignSystem.Colors.textSecondary.opacity(0.16), lineWidth: 0.75)
+                        }
+                }
+            }
+        }
+        .buttonStyle(.stillTactileWave(accent: accent))
+        .accessibilityLabel("\(option.displayName) reminder sound")
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 

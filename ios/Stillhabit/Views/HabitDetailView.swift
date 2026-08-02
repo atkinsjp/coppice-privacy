@@ -32,6 +32,7 @@ struct HabitDetailView: View {
     /// on appear and committed (plus rescheduled with the system) on change.
     @State private var isReminderEnabled: Bool = false
     @State private var reminderTime: Date = Habit.date(fromMinuteOfDay: 8 * 60)
+    @State private var reminderSound: ReminderSound = .chime
     @State private var hasSeededReminder: Bool = false
 
     private let dayCount = 90
@@ -199,16 +200,20 @@ struct HabitDetailView: View {
 
                 Spacer()
 
-                Text(habit.reminderSummary ?? "None")
+                Text(reminderHeadline)
                     .font(DesignSystem.Typography.smallNumber)
                     .foregroundStyle(habit.hasReminder ? accent : DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .contentTransition(.opacity)
                     .animation(.easeOut(duration: 0.2), value: habit.reminderMinuteOfDay)
+                    .animation(.easeOut(duration: 0.2), value: habit.reminderSoundRaw)
             }
 
             ReminderPicker(
                 isEnabled: $isReminderEnabled,
                 time: $reminderTime,
+                sound: $reminderSound,
                 accent: accent,
                 label: "Daily nudge",
                 cadence: editingCadence
@@ -240,12 +245,23 @@ struct HabitDetailView: View {
             guard hasSeededReminder, isReminderEnabled else { return }
             commitReminder()
         }
+        .onChange(of: reminderSound) { _, _ in
+            guard hasSeededReminder, isReminderEnabled else { return }
+            commitReminder()
+        }
+    }
+
+    /// "7:30 AM · Bowl" when a reminder is set, otherwise "None".
+    private var reminderHeadline: String {
+        guard let summary = habit.reminderSummary else { return "None" }
+        return summary + " · " + habit.reminderSound.displayName
     }
 
     /// Seeds the reminder editor from the habit's stored reminder.
     private func seedReminderEditor() {
         isReminderEnabled = habit.hasReminder
         reminderTime = habit.reminderTimeToday
+        reminderSound = habit.reminderSound
         hasSeededReminder = true
     }
 
@@ -253,9 +269,11 @@ struct HabitDetailView: View {
     /// notifications with the system. No-op when nothing actually changed.
     private func commitReminder() {
         let resolved: Int? = isReminderEnabled ? Habit.minuteOfDay(from: reminderTime) : nil
-        guard resolved != habit.reminderMinuteOfDay else { return }
+        let resolvedSound: ReminderSound = isReminderEnabled ? reminderSound : habit.reminderSound
+        guard resolved != habit.reminderMinuteOfDay || resolvedSound != habit.reminderSound else { return }
 
         habit.reminderMinuteOfDay = resolved
+        habit.reminderSound = resolvedSound
         try? modelContext.save()
         Task { await ReminderService.shared.reschedule(for: habit) }
     }

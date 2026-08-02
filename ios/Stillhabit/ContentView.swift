@@ -20,6 +20,7 @@ struct ContentView: View {
     /// notifications always match the saved times even after a device restore,
     /// a timezone change, or the system dropping pending requests.
     private func syncReminders() async {
+        ReminderService.shared.prepareSounds()
         let habits = (try? modelContext.fetch(FetchDescriptor<Habit>())) ?? []
         await ReminderService.shared.syncAll(habits)
     }

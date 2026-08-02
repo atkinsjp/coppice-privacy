@@ -25,6 +25,8 @@ nonisolated struct ReminderPlan: Sendable, Equatable {
     /// Weekday indexes (1...7, Sunday...Saturday) the reminder repeats on.
     /// `nil` means every day.
     let weekdays: [Int]?
+    /// The tone this reminder plays.
+    let sound: ReminderSound
 
     /// Builds a plan from a habit, or returns nil when the habit has no
     /// reminder, is resting, or has an unschedulable (empty) weekday set.
@@ -36,6 +38,7 @@ nonisolated struct ReminderPlan: Sendable, Equatable {
         title = habit.title
         hour = clamped / 60
         minute = clamped % 60
+        sound = habit.reminderSound
 
         switch habit.cadence {
         case .daily, .weeklyTarget:
@@ -139,10 +142,16 @@ final class ReminderService {
 
     // MARK: - Private
 
+    /// Renders every custom reminder tone to disk so the first scheduled
+    /// notification never races the file write.
+    func prepareSounds() {
+        ReminderSoundLibrary.shared.prepareAll()
+    }
+
     /// Registers the calendar triggers for one plan.
     private func schedule(_ plan: ReminderPlan) async {
         let center = UNUserNotificationCenter.current()
-        let content = Self.makeContent(title: plan.title)
+        let content = Self.makeContent(title: plan.title, sound: plan.sound)
 
         var requests: [UNNotificationRequest] = []
         if let weekdays = plan.weekdays {
@@ -181,13 +190,15 @@ final class ReminderService {
         }
     }
 
-    /// A quiet, non-nagging notification body in the app's voice.
-    private static func makeContent(title: String) -> UNMutableNotificationContent {
+    /// A quiet, non-nagging notification body in the app's voice, carrying the
+    /// habit's chosen tone. A `.silent` choice leaves `sound` nil so the
+    /// reminder arrives as a wordless banner.
+    private static func makeContent(title: String, sound: ReminderSound) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = "A quiet moment to return to this."
-        content.sound = .default
-        content.interruptionLevel = .active
+        content.sound = ReminderSoundLibrary.shared.notificationSound(for: sound)
+        content.interruptionLevel = sound == .silent ? .passive : .active
         return content
     }
 

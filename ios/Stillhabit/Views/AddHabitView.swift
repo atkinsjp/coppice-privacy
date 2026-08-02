@@ -22,6 +22,8 @@ struct AddHabitView: View {
     /// Optional time-of-day reminder for this habit.
     @State private var isReminderEnabled: Bool = false
     @State private var reminderTime: Date = Habit.date(fromMinuteOfDay: 8 * 60)
+    /// The tone this habit's reminder will play.
+    @State private var reminderSound: ReminderSound = .chime
     @FocusState private var isTitleFocused: Bool
 
     private var trimmedTitle: String {
@@ -92,6 +94,7 @@ struct AddHabitView: View {
                 ReminderPicker(
                     isEnabled: $isReminderEnabled,
                     time: $reminderTime,
+                    sound: $reminderSound,
                     accent: DesignSystem.habitColor(forHex: selectedHex),
                     cadence: cadence
                 )
@@ -179,6 +182,7 @@ struct AddHabitView: View {
         )
         if isReminderEnabled {
             habit.reminderMinuteOfDay = Habit.minuteOfDay(from: reminderTime)
+            habit.reminderSound = reminderSound
         }
         modelContext.insert(habit)
         SharedStore.notifyWidgets()

@@ -100,6 +100,10 @@ final class Habit {
     /// wall-clock offset rather than a `Date` so the reminder always fires at
     /// the same local time regardless of timezone travel or daylight saving.
     var reminderMinuteOfDay: Int?
+    /// Raw value of the `ReminderSound` this habit's notification plays. nil
+    /// resolves to the app's signature chime, so habits created before this
+    /// setting existed still sound like Stillhabit rather than a generic alert.
+    var reminderSoundRaw: String?
 
     init(
         title: String,
@@ -487,6 +491,12 @@ extension Habit {
 
     /// Whether a time-of-day reminder is set for this habit.
     var hasReminder: Bool { reminderMinuteOfDay != nil }
+
+    /// The tone this habit's reminder plays, resolved from storage.
+    var reminderSound: ReminderSound {
+        get { ReminderSound.resolve(reminderSoundRaw) }
+        set { reminderSoundRaw = newValue.rawValue }
+    }
 
     /// The reminder time projected onto today's date, suitable for binding to
     /// a `DatePicker`. Falls back to 8:00 AM when no reminder is set.
