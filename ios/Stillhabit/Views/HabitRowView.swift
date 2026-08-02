@@ -17,7 +17,6 @@
 
 import SwiftUI
 import SwiftData
-import Combine
 
 struct HabitRowView: View {
     let habit: Habit
@@ -235,9 +234,19 @@ struct HabitRowView: View {
             seedTimerDisplay()
             lastSeenStreak = habit.currentStreak
         }
-        .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
-            guard habit.isAlive, isTimerRunning else { return }
-            tickTimer()
+        // The countdown only needs a heartbeat while a focus timer is actually
+        // running. The previous `.onReceive(Timer.publish(...))` built a brand
+        // new run-loop timer on *every* body evaluation and kept every card
+        // ticking five times a second for the whole session, whether or not it
+        // had a timer — a permanent CPU tax that grew with the list. `.task(id:)`
+        // starts one loop when the timer starts and tears it down when it stops.
+        .task(id: isTimerRunning) {
+            guard isTimerRunning else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled, habit.isAlive, habit.timerStart != nil else { return }
+                tickTimer()
+            }
         }
     }
 

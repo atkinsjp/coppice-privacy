@@ -23,6 +23,12 @@ struct WavyBackgroundView: View {
     /// interferes with touch targets.
     var warmGlow: Bool = false
 
+    /// Freezes the drift on its current frame. The mesh is re-rasterized on
+    /// every tick, which is expensive enough that leaving it running behind a
+    /// sheet, or while the app is backgrounded, burns the CPU for no visible
+    /// benefit — and starves the rest of the app over a long session.
+    var isPaused: Bool = false
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -43,7 +49,8 @@ struct WavyBackgroundView: View {
         if reduceMotion {
             meshGradient(at: 0)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
+            // 12 fps is plenty for a drift this slow, and halves the work.
+            TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: isPaused)) { timeline in
                 meshGradient(at: timeline.date.timeIntervalSinceReferenceDate)
             }
         }

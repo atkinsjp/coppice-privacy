@@ -53,18 +53,22 @@ struct TodayView: View {
         }
     }
 
-    @State private var isAddingHabit = false
-    @State private var isShowingResting = false
-    @State private var isShowingPaywall = false
-    @State private var isShowingAmbientSettings = false
-    @State private var isShowingWeeklyGraph = false
-    /// The habit whose detail sheet is open, held as an *identifier* rather
-    /// than the model itself. A `Habit` kept in view state can be deleted from
-    /// underneath the sheet, and SwiftUI reads its `id` on every render while
-    /// the sheet dismisses — touching a deleted SwiftData model raises
-    /// `NSObjectInaccessibleException`, which aborts the app. An identifier is
-    /// inert, and the model is re-resolved from the live query on each render.
-    @State private var selection: HabitSelection?
+    /// The single presented sheet, if any.
+    ///
+    /// SwiftUI supports exactly **one** sheet presentation per view. Stacking
+    /// several `.sheet` modifiers on the same view lets two presentations race
+    /// each other — the second one lands on a view controller that is already
+    /// presenting, which UIKit answers with an Objective-C exception that no
+    /// Swift `do/catch` can trap and that aborts the process. Routing every
+    /// destination through one modifier makes that structurally impossible.
+    ///
+    /// The habit detail case carries an *identifier* rather than the model
+    /// itself: a `Habit` kept in view state can be deleted from underneath the
+    /// sheet, and SwiftUI reads its `id` on every render while the sheet
+    /// dismisses — touching a deleted SwiftData model raises
+    /// `NSObjectInaccessibleException`. An identifier is inert, and the model
+    /// is re-resolved from the live query on each render.
+    @State private var route: TodayRoute?
     @State private var ambientPlayer = AmbientSoundPlayer()
     /// Current sort mode for the Today list. Persists across launches.
     @AppStorage("stillhabit.sortMode") private var sortModeRaw: String = HabitSortMode.manual.rawValue
@@ -152,7 +156,7 @@ struct TodayView: View {
                                 allowsDragReorder: sortMode == .manual,
                                 listIndex: index,
                                 onOpen: {
-                                    selection = HabitSelection(id: habit.id)
+                                    present(.detail(habit.id))
                                 },
                                 onRest: {
                                     rest(habit)
@@ -179,8 +183,15 @@ struct TodayView: View {
         }
         .scrollDisabled(isStillMomentActive)
         .background {
-            WavyBackgroundView(warmGlow: isStillMomentActive)
-                .allowsHitTesting(false)
+            // The mesh redraws every frame for as long as it is animating, so
+            // it is parked whenever nobody can see it: behind a sheet, or while
+            // the scene is not active. Left running, it pegs the CPU for the
+            // whole session and eventually starves the app.
+            WavyBackgroundView(
+                warmGlow: isStillMomentActive,
+                isPaused: route != nil || scenePhase != .active
+            )
+            .allowsHitTesting(false)
         }
         .overlay {
             if isStillMomentActive {
@@ -190,31 +201,8 @@ struct TodayView: View {
         }
         .animation(.easeInOut(duration: 0.8), value: allComplete)
         .animation(.easeInOut(duration: 0.8), value: isStillMomentActive)
-        .sheet(isPresented: $isAddingHabit) {
-            AddHabitView()
-        }
-        .sheet(isPresented: $isShowingResting) {
-            RestingHabitsView()
-        }
-        .sheet(item: $selection) { selected in
-            if let habit = allHabits.first(where: { $0.isAlive && $0.id == selected.id }) {
-                HabitDetailView(habit: habit)
-            } else {
-                Color.clear.onAppear { selection = nil }
-            }
-        }
-        .sheet(isPresented: $isShowingPaywall) {
-            PaywallView()
-        }
-        .sheet(isPresented: $isShowingWeeklyGraph) {
-            WeeklyGraphView()
-        }
-        .sheet(isPresented: $isShowingAmbientSettings) {
-            AmbientSettingsView(player: ambientPlayer)
-                .presentationDetents([.height(300)])
-                .presentationBackground(DesignSystem.Colors.card)
-                .presentationCornerRadius(28)
-                .presentationDragIndicator(.visible)
+        .sheet(item: $route) { destination in
+            sheetContent(for: destination)
         }
         .onAppear {
             ambientPlayer.startIfEnabled()
@@ -242,9 +230,45 @@ struct TodayView: View {
     /// Opens the add sheet, or the paywall when the free limit is reached.
     private func requestNewHabit() {
         if !store.isPremium && habits.count >= StoreViewModel.freeHabitLimit {
-            isShowingPaywall = true
+            present(.paywall)
         } else {
-            isAddingHabit = true
+            present(.addHabit)
+        }
+    }
+
+    /// Routes to a destination, ignoring the request if something is already
+    /// on screen. A menu item and a card tap can both fire within the same
+    /// run loop turn; swapping the route mid-presentation is exactly the race
+    /// that aborts, so the first one through wins.
+    private func present(_ destination: TodayRoute) {
+        guard route == nil else { return }
+        route = destination
+    }
+
+    /// Builds the body of whichever destination is presented.
+    @ViewBuilder
+    private func sheetContent(for destination: TodayRoute) -> some View {
+        switch destination {
+        case .addHabit:
+            AddHabitView()
+        case .resting:
+            RestingHabitsView()
+        case .detail(let habitID):
+            if let habit = allHabits.first(where: { $0.isAlive && $0.id == habitID }) {
+                HabitDetailView(habit: habit)
+            } else {
+                Color.clear.onAppear { route = nil }
+            }
+        case .paywall:
+            PaywallView()
+        case .weeklyGraph:
+            WeeklyGraphView()
+        case .ambientSettings:
+            AmbientSettingsView(player: ambientPlayer)
+                .presentationDetents([.height(300)])
+                .presentationBackground(DesignSystem.Colors.card)
+                .presentationCornerRadius(28)
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -399,7 +423,7 @@ struct TodayView: View {
             }
 
             Button {
-                isShowingWeeklyGraph = true
+                present(.weeklyGraph)
             } label: {
                 Label("Analytics & Streaks", systemImage: "chart.bar")
             }
@@ -414,7 +438,7 @@ struct TodayView: View {
             }
 
             Button {
-                isShowingAmbientSettings = true
+                present(.ambientSettings)
             } label: {
                 Label("Ambient Sound Settings…", systemImage: "speaker.wave.1")
             }
@@ -438,7 +462,7 @@ struct TodayView: View {
     private func rest(_ habit: Habit) {
         guard habit.isAlive else { return }
         CrashDiagnostics.note("rest habit")
-        if selection?.id == habit.id { selection = nil }
+        dismissDetail(for: habit.id)
         ReminderService.shared.cancelReminder(habitID: habit.id)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             habit.isArchived = true
@@ -454,13 +478,21 @@ struct TodayView: View {
     private func delete(_ habit: Habit) {
         guard habit.isAlive else { return }
         CrashDiagnostics.note("delete habit")
-        if selection?.id == habit.id { selection = nil }
+        dismissDetail(for: habit.id)
         ReminderService.shared.cancelReminder(habitID: habit.id)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             modelContext.delete(habit)
         }
         try? modelContext.save()
         SharedStore.notifyWidgets()
+    }
+
+    /// Closes the detail sheet if it is showing the habit about to go away,
+    /// so nothing is left reading a model that is being archived or deleted.
+    private func dismissDetail(for habitID: UUID) {
+        if case .detail(let shown) = route, shown == habitID {
+            route = nil
+        }
     }
 
     // MARK: - Reorder
@@ -607,7 +639,7 @@ struct TodayView: View {
 
     private var restingLink: some View {
         Button {
-            isShowingResting = true
+            present(.resting)
         } label: {
             Text("Resting · \(restingHabits.count)")
                 .font(DesignSystem.Typography.smallNumber)
@@ -626,13 +658,30 @@ struct TodayView: View {
         .environment(StoreViewModel())
 }
 
-// MARK: - Sheet selection
+// MARK: - Sheet routing
 
-/// An inert identifier for the open habit detail sheet. Holding the `Habit`
-/// itself would let SwiftUI read a deleted SwiftData model during the sheet's
-/// dismissal, which raises an Objective-C exception and aborts the process.
-struct HabitSelection: Identifiable, Equatable {
-    let id: UUID
+/// Every screen the Today view can present, funnelled through a single
+/// `.sheet(item:)` so two presentations can never collide.
+enum TodayRoute: Identifiable, Equatable {
+    case addHabit
+    case resting
+    /// The habit detail sheet, identified by habit ID rather than by model —
+    /// a deleted SwiftData object read during dismissal aborts the process.
+    case detail(UUID)
+    case paywall
+    case weeklyGraph
+    case ambientSettings
+
+    var id: String {
+        switch self {
+        case .addHabit:         return "addHabit"
+        case .resting:          return "resting"
+        case .detail(let id):   return "detail-\(id.uuidString)"
+        case .paywall:          return "paywall"
+        case .weeklyGraph:      return "weeklyGraph"
+        case .ambientSettings:  return "ambientSettings"
+        }
+    }
 }
 
 // MARK: - Sort mode

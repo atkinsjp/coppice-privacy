@@ -11,9 +11,15 @@ import RevenueCat
 @main
 struct StillhabitApp: App {
     private let container: ModelContainer = SharedStore.makeContainer()
-    /// Keeps reminder banners visible while the app is in the foreground.
-    private let notificationDelegate = ReminderPresentationDelegate()
     @State private var store: StoreViewModel
+
+    /// Keeps reminder banners visible while the app is in the foreground.
+    ///
+    /// `UNUserNotificationCenter.delegate` is a **weak** reference, so the
+    /// delegate has to be owned somewhere that outlives every value copy of
+    /// this `App` struct — otherwise it can be deallocated and the center left
+    /// messaging a dangling object.
+    private static let notificationDelegate = ReminderPresentationDelegate()
 
     init() {
         CrashDiagnostics.install()
@@ -24,7 +30,7 @@ struct StillhabitApp: App {
         Purchases.configure(withAPIKey: Config.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY)
         #endif
         _store = State(initialValue: StoreViewModel())
-        UNUserNotificationCenter.current().delegate = notificationDelegate
+        UNUserNotificationCenter.current().delegate = Self.notificationDelegate
     }
 
     var body: some Scene {
