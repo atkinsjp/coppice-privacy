@@ -567,6 +567,97 @@ extension Habit {
         return nil
     }
 
+    // MARK: - Reflective analytics
+
+    /// The trailing `lastNDays` calendar days, clipped so the window never
+    /// begins before the habit existed. Oldest first, today last.
+    private func recentWindow(lastNDays: Int) -> [Date] {
+        guard lastNDays > 0 else { return [] }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let rawStart = calendar.date(byAdding: .day, value: -(lastNDays - 1), to: today) else { return [] }
+        let start = max(rawStart, calendar.startOfDay(for: createdAt))
+        guard start <= today else { return [] }
+
+        var days: [Date] = []
+        var cursor = start
+        while cursor <= today {
+            days.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return days
+    }
+
+    /// Share of *scheduled* days completed over the trailing window, as a
+    /// fraction from 0.0 to 1.0.
+    ///
+    /// The denominator respects the habit's cadence rather than the raw day
+    /// count, so a Mon/Wed/Fri habit isn't quietly punished for its rest days:
+    /// - `.daily` — every day in the window counts.
+    /// - `.specificDays` — only matching weekdays count.
+    /// - `.weeklyTarget(n)` — the expectation is `n` completions per week,
+    ///   pro-rated across the window.
+    ///
+    /// The window is clipped to the habit's creation date, so a habit that is
+    /// three days old is measured against three days, not thirty. Returns 0
+    /// when nothing was ever scheduled.
+    func completionRatePercentage(for lastNDays: Int = 30) -> Double {
+        let calendar = Calendar.current
+        let days = recentWindow(lastNDays: lastNDays)
+        guard !days.isEmpty else { return 0 }
+
+        let completedDays = Set(completedDates.map { calendar.startOfDay(for: $0) })
+
+        switch cadence {
+        case .daily, .specificDays:
+            let scheduled = days.filter { isScheduled(on: $0) }
+            guard !scheduled.isEmpty else { return 0 }
+            let done = scheduled.filter { completedDays.contains($0) }.count
+            return min(Double(done) / Double(scheduled.count), 1)
+
+        case .weeklyTarget(let target):
+            let expected = Double(max(target, 1)) * (Double(days.count) / 7)
+            guard expected > 0 else { return 0 }
+            let done = days.filter { completedDays.contains($0) }.count
+            return min(Double(done) / expected, 1)
+        }
+    }
+
+    /// The part of the day this habit is most often completed in, inferred
+    /// from the hour of each completion timestamp in the trailing window.
+    /// Returns `nil` until there are at least `minimumSamples` completions —
+    /// an observation, never a guess.
+    func timeOfDayPattern(for lastNDays: Int = 30, minimumSamples: Int = 3) -> TimeOfDayPattern? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard lastNDays > 0,
+              let windowStart = calendar.date(byAdding: .day, value: -(lastNDays - 1), to: today) else { return nil }
+
+        let recent = completedDates.filter { $0 >= windowStart }
+        guard recent.count >= minimumSamples else { return nil }
+
+        var tally: [TimeOfDayPattern: Int] = [:]
+        for completion in recent {
+            let hour = calendar.component(.hour, from: completion)
+            tally[TimeOfDayPattern(hour: hour), default: 0] += 1
+        }
+
+        // Ties resolve by the natural order of the day so the result is stable.
+        return tally
+            .sorted { lhs, rhs in
+                lhs.value == rhs.value ? lhs.key.order < rhs.key.order : lhs.value > rhs.value
+            }
+            .first?
+            .key
+    }
+
+    /// Human-readable name of the part of day this habit gravitates toward
+    /// ("Morning", "Afternoon", "Evening", "Night"), or nil without enough data.
+    func mostCommonTimeOfDay(for lastNDays: Int = 30) -> String? {
+        timeOfDayPattern(for: lastNDays)?.displayName
+    }
+
     /// Completion flags for the trailing `days` calendar days, oldest first (today last).
     func completionTrail(days: Int) -> [Bool] {
         let calendar = Calendar.current

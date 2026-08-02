@@ -66,6 +66,8 @@ struct HabitDetailView: View {
 
                     heatmap
 
+                    HabitInsightsView(habit: habit, accent: accent)
+
                     statsCapsule
 
                     scheduleSection
