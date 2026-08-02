@@ -113,8 +113,21 @@ final class ReminderService {
     func reschedule(for habit: Habit) async {
         guard habit.isAlive else { return }
         CrashDiagnostics.note("reschedule reminder")
-        let plan = ReminderPlan(habit: habit)
-        cancelReminder(habitID: habit.id)
+        // The plan is built synchronously, before the first suspension point,
+        // so the SwiftData model is never read after an `await`.
+        await apply(ReminderPlan(habit: habit), for: habit.id)
+    }
+
+    /// Applies an already-built plan: clears whatever was scheduled for the
+    /// habit and registers the new triggers. A `nil` plan just cancels.
+    ///
+    /// Callers that create or edit a habit should build the `ReminderPlan`
+    /// while they still hold a live model and pass it here. `ReminderPlan` is
+    /// an inert `Sendable` snapshot, so scheduling can safely outlive the view
+    /// that started it — and can never read a habit that has meanwhile been
+    /// deleted, which would raise `NSObjectInaccessibleException` and abort.
+    func apply(_ plan: ReminderPlan?, for habitID: UUID) async {
+        cancelReminder(habitID: habitID)
         guard let plan else { return }
         await schedule(plan)
     }

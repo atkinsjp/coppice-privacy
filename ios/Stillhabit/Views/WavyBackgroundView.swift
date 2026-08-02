@@ -2,19 +2,40 @@
 //  WavyBackgroundView.swift
 //  Stillhabit
 //
-//  A continuously animated, earthy mesh-gradient background.
-//  Moss, taupe, and a whisper of terracotta ebb and flow like
-//  slow water — quiet enough to never compete with content.
+//  A slowly drifting, earthy backdrop. Moss, taupe, and a whisper of
+//  terracotta ebb and flow like light moving across a wall — quiet enough
+//  to never compete with content.
+//
+//  Rendering notes (this is load-bearing, not decoration):
+//
+//  The first version of this view was a 4×4 `MeshGradient` re-rasterized 12
+//  times a second by a `TimelineView`. `MeshGradient` is drawn by SwiftUI's
+//  Metal renderer, which needs a fresh render target every frame. This app
+//  runs in a sandbox where `IOSurfaceRoot` access is denied — the launch log
+//  says so on every single run:
+//
+//      IOSurfaceClientSetSurfaceNotify failed e00002c7
+//      IOServiceOpen(IOSurfaceRoot) returned kr=0xe00002e2 (DENIED)
+//
+//  A failed surface allocation inside Core Animation calls `abort()`, which
+//  surfaces as a bare SIGABRT with no Swift frames and no reason — exactly the
+//  shape of the crash reports this app has been producing, at unpredictable
+//  points deep into a session and never at launch. The risk peaks whenever the
+//  render target is rebuilt: presenting or dismissing a sheet, returning from
+//  the background.
+//
+//  So the mesh is gone. The same visual is now built from plain gradient
+//  layers, which composite in place with no offscreen buffer and no Metal
+//  pass, and the drift is a `repeatForever` Core Animation running entirely on
+//  the render server — zero per-frame CPU, zero re-rasterization, nothing to
+//  pause. There is deliberately no `.blur()` anywhere here: blur is the other
+//  modifier that forces an offscreen allocation. Softness comes from gradients
+//  that fade to clear.
 //
 
 import SwiftUI
 
 /// The signature animated backdrop for the Today view.
-///
-/// A 4×4 `MeshGradient` whose interior control points drift on layered
-/// sine/cosine waves driven by a `TimelineView`. Rendering is fully
-/// GPU-accelerated, and the palette is kept close to the warm ivory /
-/// charcoal base so foreground text remains perfectly legible.
 struct WavyBackgroundView: View {
     /// When true, a warm golden/ochre glow gently pulses and expands outward
     /// over ~3 seconds — the visual half of the "Still Moment" reward that
@@ -23,117 +44,165 @@ struct WavyBackgroundView: View {
     /// interferes with touch targets.
     var warmGlow: Bool = false
 
-    /// Freezes the drift on its current frame. The mesh is re-rasterized on
-    /// every tick, which is expensive enough that leaving it running behind a
-    /// sheet, or while the app is backgrounded, burns the CPU for no visible
-    /// benefit — and starves the rest of the app over a long session.
-    var isPaused: Bool = false
-
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Flipped once on appear; each blob eases between its two extremes
+    /// forever after. The animation lives on the render server, so this costs
+    /// nothing once it has started.
+    @State private var isDrifting = false
+
     var body: some View {
-        meshBackground
-            .ignoresSafeArea()
-            .overlay {
-                if warmGlow {
-                    WarmGlowPulse(reduceMotion: reduceMotion)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
-            }
-    }
+        ZStack {
+            baseColor
 
-    @ViewBuilder
-    private var meshBackground: some View {
-        if reduceMotion {
-            meshGradient(at: 0)
-        } else {
-            // 12 fps is plenty for a drift this slow, and halves the work.
-            TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: isPaused)) { timeline in
-                meshGradient(at: timeline.date.timeIntervalSinceReferenceDate)
+            ForEach(blobs) { blob in
+                blobLayer(blob)
             }
+        }
+        .ignoresSafeArea()
+        .overlay {
+            if warmGlow {
+                WarmGlowPulse(reduceMotion: reduceMotion)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            isDrifting = true
         }
     }
 
-    // MARK: - Mesh
+    // MARK: - Layers
 
-    private func meshGradient(at time: TimeInterval) -> some View {
-        MeshGradient(
-            width: 4,
-            height: 4,
-            points: animatedPoints(at: time),
-            colors: colorScheme == .dark ? Self.darkColors : Self.lightColors,
-            smoothsColors: true
+    private func blobLayer(_ blob: DriftBlob) -> some View {
+        let travelling = isDrifting && !reduceMotion
+        return EllipticalGradient(
+            colors: [blob.color, blob.color.opacity(0)],
+            center: .center,
+            startRadiusFraction: 0,
+            endRadiusFraction: 0.55
         )
+        .frame(width: blob.size.width, height: blob.size.height)
+        .offset(
+            x: blob.origin.x + (travelling ? blob.travel.width : -blob.travel.width),
+            y: blob.origin.y + (travelling ? blob.travel.height : -blob.travel.height)
+        )
+        .animation(
+            .easeInOut(duration: blob.duration)
+                .repeatForever(autoreverses: true)
+                .delay(blob.delay),
+            value: isDrifting
+        )
+        .allowsHitTesting(false)
     }
 
-    /// Produces the 16 control points of the mesh, gently displacing the
-    /// interior points on slow, layered sine waves so colors appear to
-    /// drift and breathe across the screen.
-    private func animatedPoints(at time: TimeInterval) -> [SIMD2<Float>] {
-        let t = Float(time)
+    // MARK: - Palette
 
-        /// Smooth two-axis wobble for an interior point.
-        func drift(_ x: Float, _ y: Float, speed: Float, phase: Float, amp: Float) -> SIMD2<Float> {
-            SIMD2<Float>(
-                x + sin(t * speed + phase) * amp,
-                y + cos(t * speed * 0.8 + phase * 1.7) * amp
-            )
+    private var isDark: Bool { colorScheme == .dark }
+
+    /// Warm ivory in light mode, deep matte charcoal in dark mode — the same
+    /// base the rest of the design system sits on.
+    private var baseColor: Color {
+        Color(hex: isDark ? "1C1E1D" : "F7F6F2")
+    }
+
+    /// Four soft washes of colour, each drifting on its own slow cycle. Sizes
+    /// are generous so their edges always fall outside the screen and the
+    /// gradient reads as ambient light rather than as four visible circles.
+    private var blobs: [DriftBlob] {
+        if isDark {
+            return [
+                DriftBlob(
+                    id: 0,
+                    color: Color(hex: "27302A").opacity(0.95),
+                    size: CGSize(width: 520, height: 560),
+                    origin: CGPoint(x: -120, y: -230),
+                    travel: CGSize(width: 26, height: 34),
+                    duration: 17,
+                    delay: 0
+                ),
+                DriftBlob(
+                    id: 1,
+                    color: Color(hex: "2C2621").opacity(0.90),
+                    size: CGSize(width: 560, height: 520),
+                    origin: CGPoint(x: 150, y: -60),
+                    travel: CGSize(width: -30, height: 24),
+                    duration: 21,
+                    delay: 1.4
+                ),
+                DriftBlob(
+                    id: 2,
+                    color: Color(hex: "232821").opacity(0.95),
+                    size: CGSize(width: 480, height: 500),
+                    origin: CGPoint(x: -100, y: 240),
+                    travel: CGSize(width: 34, height: -28),
+                    duration: 19,
+                    delay: 2.6
+                ),
+                DriftBlob(
+                    id: 3,
+                    color: Color(hex: "24282A").opacity(0.85),
+                    size: CGSize(width: 600, height: 560),
+                    origin: CGPoint(x: 130, y: 330),
+                    travel: CGSize(width: -24, height: -30),
+                    duration: 23,
+                    delay: 0.8
+                ),
+            ]
         }
-
-        /// Slide a point along an edge (one axis stays pinned).
-        func edgeSlide(_ value: Float, speed: Float, phase: Float, amp: Float) -> Float {
-            value + sin(t * speed + phase) * amp
-        }
-
         return [
-            // Top edge — pinned to y = 0, x drifts slightly.
-            SIMD2<Float>(0.0, 0.0),
-            SIMD2<Float>(edgeSlide(0.33, speed: 0.11, phase: 0.4, amp: 0.06), 0.0),
-            SIMD2<Float>(edgeSlide(0.66, speed: 0.09, phase: 2.1, amp: 0.06), 0.0),
-            SIMD2<Float>(1.0, 0.0),
-
-            // Upper interior row.
-            SIMD2<Float>(0.0, edgeSlide(0.33, speed: 0.10, phase: 1.2, amp: 0.05)),
-            drift(0.36, 0.30, speed: 0.14, phase: 0.0, amp: 0.10),
-            drift(0.64, 0.36, speed: 0.12, phase: 2.4, amp: 0.10),
-            SIMD2<Float>(1.0, edgeSlide(0.30, speed: 0.08, phase: 3.3, amp: 0.05)),
-
-            // Lower interior row.
-            SIMD2<Float>(0.0, edgeSlide(0.68, speed: 0.09, phase: 4.0, amp: 0.05)),
-            drift(0.33, 0.66, speed: 0.11, phase: 4.8, amp: 0.11),
-            drift(0.68, 0.64, speed: 0.13, phase: 1.6, amp: 0.11),
-            SIMD2<Float>(1.0, edgeSlide(0.66, speed: 0.10, phase: 0.9, amp: 0.05)),
-
-            // Bottom edge — pinned to y = 1.
-            SIMD2<Float>(0.0, 1.0),
-            SIMD2<Float>(edgeSlide(0.34, speed: 0.10, phase: 5.2, amp: 0.06), 1.0),
-            SIMD2<Float>(edgeSlide(0.67, speed: 0.12, phase: 2.8, amp: 0.06), 1.0),
-            SIMD2<Float>(1.0, 1.0),
+            DriftBlob(
+                id: 0,
+                color: Color(hex: "DCE7D6").opacity(0.85),
+                size: CGSize(width: 520, height: 560),
+                origin: CGPoint(x: -120, y: -230),
+                travel: CGSize(width: 26, height: 34),
+                duration: 17,
+                delay: 0
+            ),
+            DriftBlob(
+                id: 1,
+                color: Color(hex: "EFE7DA").opacity(0.90),
+                size: CGSize(width: 560, height: 520),
+                origin: CGPoint(x: 150, y: -60),
+                travel: CGSize(width: -30, height: 24),
+                duration: 21,
+                delay: 1.4
+            ),
+            DriftBlob(
+                id: 2,
+                color: Color(hex: "F2DFD2").opacity(0.72),
+                size: CGSize(width: 480, height: 500),
+                origin: CGPoint(x: -100, y: 240),
+                travel: CGSize(width: 34, height: -28),
+                duration: 19,
+                delay: 2.6
+            ),
+            DriftBlob(
+                id: 3,
+                color: Color(hex: "E6EAE3").opacity(0.85),
+                size: CGSize(width: 600, height: 560),
+                origin: CGPoint(x: 130, y: 330),
+                travel: CGSize(width: -24, height: -30),
+                duration: 23,
+                delay: 0.8
+            ),
         ]
     }
+}
 
-    // MARK: - Palettes
-
-    /// Light mode: warm ivory washed with soft moss, muted taupe,
-    /// and a faint breath of terracotta. Everything stays near-ivory
-    /// so foreground content keeps full contrast.
-    private static let lightColors: [Color] = [
-        Color(hex: "F7F6F2"), Color(hex: "F1F2EB"), Color(hex: "F6F3EE"), Color(hex: "F4F1EA"),
-        Color(hex: "EFF1E9"), Color(hex: "E4E9DD"), Color(hex: "EFE6DE"), Color(hex: "F0EDE4"),
-        Color(hex: "F3EEE6"), Color(hex: "EAE4D9"), Color(hex: "E7EBDF"), Color(hex: "EDEFE6"),
-        Color(hex: "F6F4EF"), Color(hex: "EFEBE1"), Color(hex: "EBEEE4"), Color(hex: "F5F2EC"),
-    ]
-
-    /// Dark mode: deep matte charcoal breathing with mossy green,
-    /// warm umber, and cool stone — equally quiet.
-    private static let darkColors: [Color] = [
-        Color(hex: "1C1E1D"), Color(hex: "1E211E"), Color(hex: "201F1D"), Color(hex: "1D1F1E"),
-        Color(hex: "1F221F"), Color(hex: "232823"), Color(hex: "262220"), Color(hex: "202220"),
-        Color(hex: "22211E"), Color(hex: "272420"), Color(hex: "232722"), Color(hex: "1F221F"),
-        Color(hex: "1D1F1E"), Color(hex: "21231F"), Color(hex: "202320"), Color(hex: "1C1E1D"),
-    ]
+/// One drifting wash of colour in the backdrop.
+private struct DriftBlob: Identifiable {
+    let id: Int
+    let color: Color
+    let size: CGSize
+    let origin: CGPoint
+    /// Half the distance travelled; the blob eases between `-travel` and `+travel`.
+    let travel: CGSize
+    let duration: Double
+    let delay: Double
 }
 
 #Preview("Light") {
@@ -149,7 +218,7 @@ struct WavyBackgroundView: View {
 
 /// The visual "Still Moment" — a soft radial wash of warm golden/ochre light
 /// that blooms outward from the center over ~3 seconds, then fades back to
-/// let the earthy mesh return to its resting state. Rendered inside the
+/// let the earthy backdrop return to its resting state. Rendered inside the
 /// background layer so it stays behind all foreground content and never
 /// captures touches.
 private struct WarmGlowPulse: View {

@@ -136,7 +136,13 @@ struct AddHabitView: View {
         .presentationBackground(DesignSystem.Colors.background)
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
-        .onAppear { isTitleFocused = true }
+        .task {
+            // Installing a first responder while the sheet is still animating
+            // in makes UIKit attach the keyboard to a view controller that is
+            // mid-presentation. A beat later the transition has settled.
+            try? await Task.sleep(for: .milliseconds(350))
+            isTitleFocused = true
+        }
     }
 
     private func colorSwatch(_ habitColor: DesignSystem.HabitColor) -> some View {
@@ -164,6 +170,13 @@ struct AddHabitView: View {
 
     private func save() {
         guard !trimmedTitle.isEmpty else { return }
+        CrashDiagnostics.note("save new habit")
+
+        // Give up the keyboard first. Tearing a first responder down inside
+        // the same transaction that dismisses the sheet is a UIKit hazard, and
+        // the field is about to disappear regardless.
+        isTitleFocused = false
+
         let resolvedCadence: HabitCadence
         switch cadence {
         case .daily:
@@ -189,11 +202,31 @@ struct AddHabitView: View {
             habit.reminderHaptic = reminderHaptic
         }
         modelContext.insert(habit)
-        SharedStore.notifyWidgets()
-        if isReminderEnabled {
-            Task { await ReminderService.shared.reschedule(for: habit) }
+
+        // Persist immediately instead of waiting for autosave. A habit the
+        // user just created has to survive whatever happens next — an autosave
+        // that never runs means the habit is silently gone on relaunch.
+        do {
+            try modelContext.save()
+        } catch {
+            print("AddHabitView: could not persist new habit — \(error.localizedDescription)")
         }
+
+        // Snapshot the reminder now, while the model is guaranteed alive.
+        // `ReminderPlan` is an inert Sendable value, so the scheduling work can
+        // outlive this sheet without ever reading the SwiftData object again.
+        let plan = isReminderEnabled ? ReminderPlan(habit: habit) : nil
+        let habitID = habit.id
+
         dismiss()
+
+        // Side effects run after the dismissal is under way, so neither the
+        // widget reload nor the notification centre round-trip lands in the
+        // middle of the presentation transaction.
+        SharedStore.notifyWidgets()
+        if plan != nil {
+            Task { await ReminderService.shared.apply(plan, for: habitID) }
+        }
     }
 
     /// Computes the next manual order value so a newly created habit is

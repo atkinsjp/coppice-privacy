@@ -183,15 +183,11 @@ struct TodayView: View {
         }
         .scrollDisabled(isStillMomentActive)
         .background {
-            // The mesh redraws every frame for as long as it is animating, so
-            // it is parked whenever nobody can see it: behind a sheet, or while
-            // the scene is not active. Left running, it pegs the CPU for the
-            // whole session and eventually starves the app.
-            WavyBackgroundView(
-                warmGlow: isStillMomentActive,
-                isPaused: route != nil || scenePhase != .active
-            )
-            .allowsHitTesting(false)
+            // The backdrop's drift is a render-server animation now, not a
+            // per-frame redraw, so there is nothing left to pause behind a
+            // sheet or while the scene is inactive.
+            WavyBackgroundView(warmGlow: isStillMomentActive)
+                .allowsHitTesting(false)
         }
         .overlay {
             if isStillMomentActive {
