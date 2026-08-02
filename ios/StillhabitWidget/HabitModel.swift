@@ -59,6 +59,9 @@ final class Habit {
     /// Manual ordering for the Today list. Must stay schema-identical with the
     /// app target. Lower values appear first.
     var order: Int
+    /// Minutes since local midnight for the habit's reminder, or nil.
+    /// Must stay schema-identical with the app target.
+    var reminderMinuteOfDay: Int?
 
     init(
         title: String,

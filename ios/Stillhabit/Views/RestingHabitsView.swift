@@ -71,6 +71,10 @@ struct RestingHabitsView: View {
                     habit.isArchived = false
                 }
                 SharedStore.notifyWidgets()
+                // A resting habit's reminder was cancelled — restore it.
+                if habit.hasReminder {
+                    Task { await ReminderService.shared.reschedule(for: habit) }
+                }
             } label: {
                 Image(systemName: "arrow.uturn.backward")
                     .font(.system(size: 14, weight: .medium))
@@ -80,6 +84,7 @@ struct RestingHabitsView: View {
             .accessibilityLabel("Bring back \(habit.title)")
 
             Button {
+                ReminderService.shared.cancelReminder(habitID: habit.id)
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     modelContext.delete(habit)
                 }

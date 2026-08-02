@@ -28,6 +28,12 @@ struct HabitDetailView: View {
     @State private var editingWeekdays: Set<Int> = []
     @State private var editingWeeklyGoal: Int = 3
 
+    /// Local editing state for the time-of-day reminder. Seeded from the habit
+    /// on appear and committed (plus rescheduled with the system) on change.
+    @State private var isReminderEnabled: Bool = false
+    @State private var reminderTime: Date = Habit.date(fromMinuteOfDay: 8 * 60)
+    @State private var hasSeededReminder: Bool = false
+
     private let dayCount = 90
     private let columns = 15
 
@@ -61,6 +67,8 @@ struct HabitDetailView: View {
                     statsCapsule
 
                     scheduleSection
+
+                    reminderSection
                 }
                 .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
                 .padding(.top, 28)
@@ -88,6 +96,7 @@ struct HabitDetailView: View {
         .presentationBackground(DesignSystem.Colors.background)
         .onAppear {
             seedCadenceEditor()
+            seedReminderEditor()
             animateStatsIn()
         }
     }
@@ -172,6 +181,83 @@ struct HabitDetailView: View {
         .onChange(of: editingCadence) { _, _ in commitCadenceIfNeeded() }
         .onChange(of: editingWeekdays) { _, _ in commitCadenceIfNeeded() }
         .onChange(of: editingWeeklyGoal) { _, _ in commitCadenceIfNeeded() }
+    }
+
+    // MARK: - Reminder editor
+
+    /// Inline reminder editor. Turning the reminder on requests notification
+    /// permission the first time; the chosen time is stored as a wall-clock
+    /// offset and re-registered with the system on every change so the
+    /// schedule always matches what's shown here.
+    private var reminderSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("REMINDER")
+                    .font(DesignSystem.Typography.overline)
+                    .tracking(1.6)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Spacer()
+
+                Text(habit.reminderSummary ?? "None")
+                    .font(DesignSystem.Typography.smallNumber)
+                    .foregroundStyle(habit.hasReminder ? accent : DesignSystem.Colors.textSecondary)
+                    .contentTransition(.opacity)
+                    .animation(.easeOut(duration: 0.2), value: habit.reminderMinuteOfDay)
+            }
+
+            ReminderPicker(
+                isEnabled: $isReminderEnabled,
+                time: $reminderTime,
+                accent: accent,
+                label: "Daily nudge",
+                cadence: editingCadence
+            )
+        }
+        .padding(20)
+        .background(DesignSystem.Colors.card, in: .rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
+                .strokeBorder(accent.opacity(0.18), lineWidth: 0.5)
+        }
+        .softShadow()
+        .onChange(of: isReminderEnabled) { _, newValue in
+            guard hasSeededReminder else { return }
+            if newValue {
+                Task {
+                    let granted = await ReminderService.shared.requestAuthorization()
+                    if !granted, ReminderService.shared.authorizationStatus != .denied {
+                        withAnimation(.easeOut(duration: 0.2)) { isReminderEnabled = false }
+                        return
+                    }
+                    commitReminder()
+                }
+            } else {
+                commitReminder()
+            }
+        }
+        .onChange(of: reminderTime) { _, _ in
+            guard hasSeededReminder, isReminderEnabled else { return }
+            commitReminder()
+        }
+    }
+
+    /// Seeds the reminder editor from the habit's stored reminder.
+    private func seedReminderEditor() {
+        isReminderEnabled = habit.hasReminder
+        reminderTime = habit.reminderTimeToday
+        hasSeededReminder = true
+    }
+
+    /// Writes the reminder state back to the habit and re-registers the
+    /// notifications with the system. No-op when nothing actually changed.
+    private func commitReminder() {
+        let resolved: Int? = isReminderEnabled ? Habit.minuteOfDay(from: reminderTime) : nil
+        guard resolved != habit.reminderMinuteOfDay else { return }
+
+        habit.reminderMinuteOfDay = resolved
+        try? modelContext.save()
+        Task { await ReminderService.shared.reschedule(for: habit) }
     }
 
     /// Seeds the local editor state from the habit's stored cadence so the
@@ -379,6 +465,11 @@ struct HabitDetailView: View {
         try? modelContext.save()
         SharedStore.notifyWidgets()
         refreshStreaks()
+        // Specific-day cadences drive which weekdays the reminder fires on,
+        // so the notification set has to follow the new schedule.
+        if habit.hasReminder {
+            Task { await ReminderService.shared.reschedule(for: habit) }
+        }
     }
 }
 

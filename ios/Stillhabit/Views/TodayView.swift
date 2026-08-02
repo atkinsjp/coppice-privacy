@@ -145,12 +145,14 @@ struct TodayView: View {
                                     selectedHabit = habit
                                 },
                                 onRest: {
+                                    ReminderService.shared.cancelReminder(habitID: habit.id)
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                         habit.isArchived = true
                                     }
                                     SharedStore.notifyWidgets()
                                 },
                                 onDelete: {
+                                    ReminderService.shared.cancelReminder(habitID: habit.id)
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                         modelContext.delete(habit)
                                     }

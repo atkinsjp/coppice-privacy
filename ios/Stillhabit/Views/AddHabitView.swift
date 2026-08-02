@@ -19,6 +19,9 @@ struct AddHabitView: View {
     @State private var type: HabitType = .checkIn
     /// Optional intentionality anchor — the user's "why" for this habit.
     @State private var whyString: String = ""
+    /// Optional time-of-day reminder for this habit.
+    @State private var isReminderEnabled: Bool = false
+    @State private var reminderTime: Date = Habit.date(fromMinuteOfDay: 8 * 60)
     @FocusState private var isTitleFocused: Bool
 
     private var trimmedTitle: String {
@@ -86,6 +89,22 @@ struct AddHabitView: View {
                     accent: DesignSystem.habitColor(forHex: selectedHex)
                 )
 
+                ReminderPicker(
+                    isEnabled: $isReminderEnabled,
+                    time: $reminderTime,
+                    accent: DesignSystem.habitColor(forHex: selectedHex),
+                    cadence: cadence
+                )
+                .onChange(of: isReminderEnabled) { _, newValue in
+                    guard newValue else { return }
+                    Task {
+                        let granted = await ReminderService.shared.requestAuthorization()
+                        if !granted, ReminderService.shared.authorizationStatus != .denied {
+                            withAnimation(.easeOut(duration: 0.2)) { isReminderEnabled = false }
+                        }
+                    }
+                }
+
                 Button(action: save) {
                     Text("Begin")
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -106,7 +125,8 @@ struct AddHabitView: View {
             .padding(.bottom, 16)
         }
         .scrollDismissesKeyboard(.interactively)
-        .presentationDetents([.height(store.isPremium ? 760 : 700)])
+        .presentationDetents([.large])
+        .presentationContentInteraction(.scrolls)
         .presentationBackground(DesignSystem.Colors.background)
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
@@ -157,8 +177,14 @@ struct AddHabitView: View {
             whyString: whyString,
             order: nextOrder
         )
+        if isReminderEnabled {
+            habit.reminderMinuteOfDay = Habit.minuteOfDay(from: reminderTime)
+        }
         modelContext.insert(habit)
         SharedStore.notifyWidgets()
+        if isReminderEnabled {
+            Task { await ReminderService.shared.reschedule(for: habit) }
+        }
         dismiss()
     }
 

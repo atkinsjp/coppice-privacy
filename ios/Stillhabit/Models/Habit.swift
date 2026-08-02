@@ -95,6 +95,11 @@ final class Habit {
     /// habits are appended after all existing non-archived habits. Only
     /// consulted when the sort mode is `.manual`; other sort modes ignore it.
     var order: Int
+    /// Minutes since local midnight (0...1439) for this habit's daily
+    /// notification reminder, or nil when no reminder is set. Stored as a
+    /// wall-clock offset rather than a `Date` so the reminder always fires at
+    /// the same local time regardless of timezone travel or daylight saving.
+    var reminderMinuteOfDay: Int?
 
     init(
         title: String,
@@ -476,6 +481,37 @@ extension Habit {
         case .weeklyTarget(let target):
             return "\(target) times a week"
         }
+    }
+
+    // MARK: - Reminder
+
+    /// Whether a time-of-day reminder is set for this habit.
+    var hasReminder: Bool { reminderMinuteOfDay != nil }
+
+    /// The reminder time projected onto today's date, suitable for binding to
+    /// a `DatePicker`. Falls back to 8:00 AM when no reminder is set.
+    var reminderTimeToday: Date {
+        Habit.date(fromMinuteOfDay: reminderMinuteOfDay ?? 8 * 60)
+    }
+
+    /// Localized short time string for the reminder, e.g. "7:30 AM", or nil.
+    var reminderSummary: String? {
+        guard reminderMinuteOfDay != nil else { return nil }
+        return reminderTimeToday.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// Converts a minutes-since-midnight offset into a `Date` on today's calendar day.
+    static func date(fromMinuteOfDay minutes: Int) -> Date {
+        let calendar = Calendar.current
+        let clamped = max(0, min(minutes, 24 * 60 - 1))
+        let start = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .minute, value: clamped, to: start) ?? start
+    }
+
+    /// Extracts minutes-since-midnight from a `Date`'s local hour and minute.
+    static func minuteOfDay(from date: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
     }
 
     /// Comma-separated short weekday names for the given weekday indexes (1...7).
