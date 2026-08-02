@@ -79,7 +79,7 @@ final class AmbientSoundPlayer {
             let clamped = min(max(volume, 0), 1)
             if clamped != volume { volume = clamped; return }
             UserDefaults.standard.set(volume, forKey: Self.volumeKey)
-            player?.volume = volume
+            activePlayer?.volume = volume
         }
     }
 
@@ -88,11 +88,11 @@ final class AmbientSoundPlayer {
     var isLoopingEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isLoopingEnabled, forKey: Self.loopKey)
-            if let player {
-                player.numberOfLoops = isLoopingEnabled ? -1 : 0
+            if let activePlayer {
+                activePlayer.numberOfLoops = isLoopingEnabled ? -1 : 0
                 // If the single pass already ended, re-enabling looping
                 // should bring the soundscape back.
-                if isLoopingEnabled, current != .off, !player.isPlaying {
+                if isLoopingEnabled, current != .off, !activePlayer.isPlaying {
                     play(current)
                 }
             } else if isLoopingEnabled, current != .off {
@@ -101,10 +101,19 @@ final class AmbientSoundPlayer {
         }
     }
 
-    private var player: AVAudioPlayer?
+    /// One decoded player per soundscape, built on first use and reused for
+    /// the life of the app. Rebuilding an `AVAudioPlayer` on every selection
+    /// (and on every foreground return) churned the audio stack needlessly.
+    private var players: [AmbientSound: AVAudioPlayer] = [:]
+    /// The soundscape currently sounding, if any.
+    private var activeSound: AmbientSound?
     private var fadeOutTask: Task<Void, Never>?
-    /// The audio session category is set exactly once per launch.
-    private var hasConfiguredSession = false
+
+    /// The player backing the currently selected soundscape.
+    private var activePlayer: AVAudioPlayer? {
+        guard let activeSound else { return nil }
+        return players[activeSound]
+    }
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.preferenceKey) ?? ""
@@ -163,81 +172,95 @@ final class AmbientSoundPlayer {
 
     /// Pauses playback (app moved to background).
     func pause() {
-        player?.pause()
+        activePlayer?.pause()
     }
 
     /// Resumes the loop if a soundscape is active (app returned to foreground).
     func resume() {
         guard current != .off else { return }
-        guard let player else {
-            // The player was never built (or was torn down) — start fresh.
+        guard let activePlayer else {
+            // The player was never built — start fresh.
             play(current)
             return
         }
-        if !player.isPlaying {
-            player.play()
-        }
+        guard !activePlayer.isPlaying else { return }
+        CrashDiagnostics.note("ambient resume")
+        activePlayer.play()
     }
 
     // MARK: - Private
 
-    private func play(_ sound: AmbientSound) {
+    /// Returns the cached player for a soundscape, decoding it on first use.
+    private func player(for sound: AmbientSound) -> AVAudioPlayer? {
+        if let cached = players[sound] { return cached }
         guard let name = sound.resourceName,
               let url = Bundle.main.url(forResource: name, withExtension: "mp3") else {
             print("AmbientSoundPlayer: missing resource for \(sound.rawValue)")
-            return
+            return nil
         }
-
-        fadeOutTask?.cancel()
-        fadeOutTask = nil
-
-        configureSessionIfNeeded()
-
-        // Fade out any previous loop before swapping.
-        if let old = player, old.isPlaying {
-            old.setVolume(0, fadeDuration: Self.fadeOutDuration)
-        }
-
         do {
-            let newPlayer = try AVAudioPlayer(contentsOf: url)
-            newPlayer.numberOfLoops = isLoopingEnabled ? -1 : 0
-            newPlayer.volume = 0
-            newPlayer.prepareToPlay()
-            newPlayer.play()
-            newPlayer.setVolume(volume, fadeDuration: Self.fadeInDuration)
-            player = newPlayer
+            let built = try AVAudioPlayer(contentsOf: url)
+            built.volume = 0
+            built.prepareToPlay()
+            players[sound] = built
+            return built
         } catch {
             print("AmbientSoundPlayer: failed to load \(name) — \(error.localizedDescription)")
+            return nil
         }
     }
 
-    /// Sets the ambient, mix-with-others category a single time.
+    /// Starts a soundscape, fading down whichever one was sounding before.
     ///
-    /// Deliberately does **not** call `setActive(true)`: on the iOS 26
-    /// simulator that call can `abort()` inside the C++ audio-session code,
-    /// outside any Swift `do/catch`, taking the whole app down with SIGABRT.
-    /// `AVAudioPlayer.play()` activates the session implicitly, so the loop
-    /// still plays and still mixes politely with other audio.
-    private func configureSessionIfNeeded() {
-        guard !hasConfiguredSession else { return }
-        hasConfiguredSession = true
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
-        } catch {
-            print("AmbientSoundPlayer: audio session error — \(error.localizedDescription)")
+    /// Deliberately touches **no** `AVAudioSession` API. On the iOS 26
+    /// simulator, configuring or activating the shared session can `abort()`
+    /// inside C++ audio-session code, outside any Swift `do/catch`, taking the
+    /// whole app down with SIGABRT. `AVAudioPlayer.play()` handles activation
+    /// itself with the default category, which already respects the ringer
+    /// switch — so the loop plays without ever entering that code path.
+    private func play(_ sound: AmbientSound) {
+        fadeOutTask?.cancel()
+        fadeOutTask = nil
+
+        // Fade out any other loop before swapping.
+        for (key, other) in players where key != sound && other.isPlaying {
+            other.setVolume(0, fadeDuration: Self.fadeOutDuration)
+        }
+
+        guard let target = player(for: sound) else { return }
+        CrashDiagnostics.note("ambient play \(sound.rawValue)")
+
+        target.numberOfLoops = isLoopingEnabled ? -1 : 0
+        if !target.isPlaying {
+            target.volume = 0
+            target.play()
+        }
+        target.setVolume(volume, fadeDuration: Self.fadeInDuration)
+        activeSound = sound
+
+        // Park the faded-out loops once the crossfade completes.
+        fadeOutTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.fadeOutDuration + 0.1))
+            guard !Task.isCancelled, let self else { return }
+            for (key, other) in self.players where key != sound {
+                other.pause()
+                other.currentTime = 0
+            }
         }
     }
 
     private func fadeOutAndStop() {
-        guard let fading = player else { return }
+        guard let fading = activePlayer else { return }
+        CrashDiagnostics.note("ambient stop")
         fading.setVolume(0, fadeDuration: Self.fadeOutDuration)
-        player = nil
+        activeSound = nil
 
         fadeOutTask?.cancel()
         fadeOutTask = Task {
             try? await Task.sleep(for: .seconds(Self.fadeOutDuration + 0.1))
             guard !Task.isCancelled else { return }
-            fading.stop()
+            fading.pause()
+            fading.currentTime = 0
         }
     }
 }

@@ -131,6 +131,7 @@ final class ReminderSoundLibrary {
     /// Plays a tone once so the user can hear it while choosing. Respects the
     /// silent switch and degrades to nothing on any failure.
     func preview(_ sound: ReminderSound) {
+        CrashDiagnostics.note("preview tone \(sound.rawValue)")
         switch sound {
         case .silent:
             return

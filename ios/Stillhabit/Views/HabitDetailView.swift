@@ -15,7 +15,7 @@ struct HabitDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
-    @State private var completionSound = CompletionSoundService()
+    private let completionSound = CompletionSoundService.shared
     @State private var displayedCurrentStreak: Int = 0
     @State private var displayedBestStreak: Int = 0
     @State private var displayedTotal: Int = 0
@@ -281,6 +281,7 @@ struct HabitDetailView: View {
 
     /// Seeds the reminder editor from the habit's stored reminder.
     private func seedReminderEditor() {
+        guard habit.isAlive else { return }
         isReminderEnabled = habit.hasReminder
         reminderTime = habit.reminderTimeToday
         reminderSound = habit.reminderSound
@@ -309,6 +310,7 @@ struct HabitDetailView: View {
     /// Seeds the local editor state from the habit's stored cadence so the
     /// picker shows the current schedule before the user touches anything.
     private func seedCadenceEditor() {
+        guard habit.isAlive else { return }
         editingCadence = habit.cadence
         switch habit.cadence {
         case .daily:
@@ -405,6 +407,7 @@ struct HabitDetailView: View {
     /// when one is being cleared.
     private func toggleDay(_ date: Date) {
         guard habit.isAlive else { return }
+        CrashDiagnostics.note("toggle day")
         let willComplete = !habit.isCompleted(on: date)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             habit.toggleCompletion(on: date)
@@ -421,6 +424,7 @@ struct HabitDetailView: View {
     /// cadence and completion history. Used after both a completion toggle and
     /// a cadence change so the three numbers always reflect the new schedule.
     private func refreshStreaks() {
+        guard habit.isAlive else { return }
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             displayedCurrentStreak = habit.currentStreak
             displayedBestStreak = habit.bestStreak
@@ -464,7 +468,7 @@ struct HabitDetailView: View {
 
     /// Gracefully rolls the three numbers up from zero, gently staggered.
     private func animateStatsIn() {
-        guard !hasAnimatedIn else { return }
+        guard habit.isAlive, !hasAnimatedIn else { return }
         hasAnimatedIn = true
 
         let targets = (habit.currentStreak, habit.bestStreak, habit.totalCompletions)
@@ -495,6 +499,7 @@ struct HabitDetailView: View {
     /// immediately while all past completions are preserved. Called live as
     /// the user edits (so streaks recompute dynamically) and again on close.
     private func commitCadenceIfNeeded() {
+        guard habit.isAlive else { return }
         let resolved: HabitCadence
         switch editingCadence {
         case .daily:

@@ -95,6 +95,7 @@ struct RestingHabitsView: View {
 
             Button {
                 guard habit.isAlive else { return }
+                CrashDiagnostics.note("delete resting habit")
                 ReminderService.shared.cancelReminder(habitID: habit.id)
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     modelContext.delete(habit)

@@ -147,7 +147,7 @@ struct HabitRowView: View {
     /// crash-safe PCM + AudioServicesPlaySystemSound approach as the Still
     /// Moment service (no AVFoundation, no audio session) so it can never
     /// trigger the simulator audio-session abort.
-    @State private var completionSound = CompletionSoundService()
+    private let completionSound = CompletionSoundService.shared
 
     /// Quiet sub-label for `.weeklyTarget` habits, e.g. "2 of 3 this week".
     private var weeklyProgressLabel: String? {
@@ -354,6 +354,7 @@ struct HabitRowView: View {
     /// path (toggle, quick-add, timer). Does nothing when the streak is
     /// unchanged or broken — only an increase earns the pop.
     private func fireStreakPulseIfNeeded() {
+        guard habit.isAlive else { return }
         let streak = habit.currentStreak
         guard streak > lastSeenStreak else {
             lastSeenStreak = streak
@@ -571,6 +572,7 @@ struct HabitRowView: View {
     /// complete automatically when the target is met; we fire the signature
     /// wave + haptic only on that completion transition.
     private func addValue(_ value: Double) {
+        guard habit.isAlive else { return }
         let wasDone = isEffectivelyDone
         habit.logProgress(value, on: Date())
         if !wasDone, isEffectivelyDone {
@@ -672,7 +674,8 @@ struct HabitRowView: View {
     /// via the persisted `timerStart` anchor, so progress stays accurate across
     /// backgrounding, screen lock, and app kills.
     private func startTimer() {
-        guard !isEffectivelyDone else { return }
+        guard habit.isAlive, !isEffectivelyDone else { return }
+        CrashDiagnostics.note("timer start")
         withAnimation(cardSpring) { isTimerExpanded = true }
         habit.timerStart = Date()
         saveAndNotify()
@@ -683,7 +686,8 @@ struct HabitRowView: View {
     /// habit's `logs`, clears the persisted anchor, and persists so progress
     /// survives across card interactions and app launches.
     private func pauseTimer() {
-        guard let start = habit.timerStart else { return }
+        guard habit.isAlive, let start = habit.timerStart else { return }
+        CrashDiagnostics.note("timer pause")
         let runElapsed = Date().timeIntervalSince(start)
         habit.timerStart = nil
         stopBorderPulse()
@@ -699,7 +703,7 @@ struct HabitRowView: View {
     /// reached. Also reconciles completion if the timer ran past zero while the
     /// app was backgrounded.
     private func tickTimer() {
-        guard let start = habit.timerStart else { return }
+        guard habit.isAlive, let start = habit.timerStart else { return }
         let runElapsed = Date().timeIntervalSince(start)
         let totalElapsed = habit.loggedToday + runElapsed
         let remaining = max(0, habit.durationTargetSeconds - totalElapsed)
@@ -715,7 +719,8 @@ struct HabitRowView: View {
     /// settles on its own. Works whether completion was observed live or after
     /// returning from background.
     private func completeTimer() {
-        guard let start = habit.timerStart else { return }
+        guard habit.isAlive, let start = habit.timerStart else { return }
+        CrashDiagnostics.note("timer complete")
         let runElapsed = Date().timeIntervalSince(start)
         let totalElapsed = habit.loggedToday + runElapsed
         let deficit = max(0, habit.durationTargetSeconds - totalElapsed)
@@ -745,7 +750,7 @@ struct HabitRowView: View {
     /// off-screen), the running elapsed is included so the clock is accurate
     /// the instant the card reappears.
     private func seedTimerDisplay() {
-        guard case .duration = habitType else { return }
+        guard habit.isAlive, case .duration = habitType else { return }
         let runningElapsed = habit.timerStart.map { Date().timeIntervalSince($0) } ?? 0
         let totalElapsed = habit.loggedToday + runningElapsed
         let remaining = max(0, habit.durationTargetSeconds - totalElapsed)
@@ -1040,6 +1045,7 @@ struct HabitRowView: View {
 
     /// Seeds the scratch fields from the habit and flips into edit mode.
     private func beginEditing() {
+        guard habit.isAlive else { return }
         editingTitle = habit.title
         switch habitType {
         case .checkIn:
@@ -1059,7 +1065,7 @@ struct HabitRowView: View {
     /// touching `completedDates` or `logs`, then exits edit mode.
     private func commitEdit() {
         let trimmed = trimmedEditingTitle
-        guard !trimmed.isEmpty else { return }
+        guard habit.isAlive, !trimmed.isEmpty else { return }
         habit.title = trimmed
         switch habitType {
         case .checkIn:
@@ -1126,7 +1132,8 @@ struct HabitRowView: View {
     /// Disabled while the inline editor is open so the long-press can't fire
     /// underneath the text fields.
     private func toggle() {
-        guard !isEditing else { return }
+        guard habit.isAlive, !isEditing else { return }
+        CrashDiagnostics.note("toggle habit")
         let willComplete = !isDoneToday
         waveTick += 1
         withAnimation(cardSpring) {
@@ -1143,6 +1150,7 @@ struct HabitRowView: View {
 
     /// Persists the current model state and asks widgets to refresh.
     private func saveAndNotify() {
+        guard habit.isAlive else { return }
         try? modelContext.save()
         SharedStore.notifyWidgets()
     }

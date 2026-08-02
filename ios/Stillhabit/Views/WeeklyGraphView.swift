@@ -51,8 +51,10 @@ struct WeeklyGraphView: View {
     /// Only habits with a real schedule this week are charted — archived and
     /// never-scheduled habits are excluded so the graph stays meaningful.
     private var graphHabits: [Habit] {
+        // `isAlive` skips models deleted while this sheet is on screen — reading
+        // one raises NSObjectInaccessibleException and aborts the process.
         allHabits.filter { habit in
-            trailDates.contains { habit.isScheduled(on: $0) }
+            habit.isAlive && trailDates.contains { habit.isScheduled(on: $0) }
         }
     }
 

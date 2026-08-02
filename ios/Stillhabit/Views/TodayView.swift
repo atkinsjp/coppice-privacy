@@ -58,7 +58,13 @@ struct TodayView: View {
     @State private var isShowingPaywall = false
     @State private var isShowingAmbientSettings = false
     @State private var isShowingWeeklyGraph = false
-    @State private var selectedHabit: Habit?
+    /// The habit whose detail sheet is open, held as an *identifier* rather
+    /// than the model itself. A `Habit` kept in view state can be deleted from
+    /// underneath the sheet, and SwiftUI reads its `id` on every render while
+    /// the sheet dismisses — touching a deleted SwiftData model raises
+    /// `NSObjectInaccessibleException`, which aborts the app. An identifier is
+    /// inert, and the model is re-resolved from the live query on each render.
+    @State private var selection: HabitSelection?
     @State private var ambientPlayer = AmbientSoundPlayer()
     /// Current sort mode for the Today list. Persists across launches.
     @AppStorage("stillhabit.sortMode") private var sortModeRaw: String = HabitSortMode.manual.rawValue
@@ -70,7 +76,7 @@ struct TodayView: View {
     /// The "Still Moment" audio + visual reward. Plays once when the day's
     /// last scheduled habit flips to complete, and again only if the user
     /// later un-completes and re-completes everything.
-    @State private var stillMomentService = StillMomentService()
+    private let stillMomentService = StillMomentService.shared
     /// True while the warm-glow visual celebration is on screen. Drives the
     /// animated background and the centered completion message.
     @State private var isStillMomentActive = false
@@ -146,7 +152,7 @@ struct TodayView: View {
                                 allowsDragReorder: sortMode == .manual,
                                 listIndex: index,
                                 onOpen: {
-                                    selectedHabit = habit
+                                    selection = HabitSelection(id: habit.id)
                                 },
                                 onRest: {
                                     rest(habit)
@@ -190,14 +196,25 @@ struct TodayView: View {
         .sheet(isPresented: $isShowingResting) {
             RestingHabitsView()
         }
-        .sheet(item: $selectedHabit) { habit in
-            HabitDetailView(habit: habit)
+        .sheet(item: $selection) { selected in
+            if let habit = allHabits.first(where: { $0.isAlive && $0.id == selected.id }) {
+                HabitDetailView(habit: habit)
+            } else {
+                Color.clear.onAppear { selection = nil }
+            }
         }
         .sheet(isPresented: $isShowingPaywall) {
             PaywallView()
         }
         .sheet(isPresented: $isShowingWeeklyGraph) {
             WeeklyGraphView()
+        }
+        .sheet(isPresented: $isShowingAmbientSettings) {
+            AmbientSettingsView(player: ambientPlayer)
+                .presentationDetents([.height(300)])
+                .presentationBackground(DesignSystem.Colors.card)
+                .presentationCornerRadius(28)
+                .presentationDragIndicator(.visible)
         }
         .onAppear {
             ambientPlayer.startIfEnabled()
@@ -413,10 +430,6 @@ struct TodayView: View {
         .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
         .accessibilityLabel("Options")
         .accessibilityHint("Sort habits, view analytics, or toggle ambient sounds")
-        .popover(isPresented: $isShowingAmbientSettings) {
-            AmbientSettingsView(player: ambientPlayer)
-                .presentationCompactAdaptation(.popover)
-        }
     }
 
     // MARK: - Rest & delete
@@ -424,7 +437,8 @@ struct TodayView: View {
     /// Archives a habit and cancels its pending reminders.
     private func rest(_ habit: Habit) {
         guard habit.isAlive else { return }
-        if selectedHabit?.id == habit.id { selectedHabit = nil }
+        CrashDiagnostics.note("rest habit")
+        if selection?.id == habit.id { selection = nil }
         ReminderService.shared.cancelReminder(habitID: habit.id)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             habit.isArchived = true
@@ -439,7 +453,8 @@ struct TodayView: View {
     /// holding a deleted object it might try to read from.
     private func delete(_ habit: Habit) {
         guard habit.isAlive else { return }
-        if selectedHabit?.id == habit.id { selectedHabit = nil }
+        CrashDiagnostics.note("delete habit")
+        if selection?.id == habit.id { selection = nil }
         ReminderService.shared.cancelReminder(habitID: habit.id)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             modelContext.delete(habit)
@@ -541,6 +556,7 @@ struct TodayView: View {
     /// fade on their own, and the message and cards return as the visual
     /// settles back to the resting earthy state.
     private func triggerStillMoment() {
+        CrashDiagnostics.note("still moment")
         stillMomentService.playChime()
         playHeartbeatHaptic()
         withAnimation(.easeInOut(duration: 0.8)) {
@@ -608,6 +624,15 @@ struct TodayView: View {
     TodayView()
         .modelContainer(for: Habit.self, inMemory: true)
         .environment(StoreViewModel())
+}
+
+// MARK: - Sheet selection
+
+/// An inert identifier for the open habit detail sheet. Holding the `Habit`
+/// itself would let SwiftUI read a deleted SwiftData model during the sheet's
+/// dismissal, which raises an Objective-C exception and aborts the process.
+struct HabitSelection: Identifiable, Equatable {
+    let id: UUID
 }
 
 // MARK: - Sort mode

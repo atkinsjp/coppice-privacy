@@ -111,6 +111,8 @@ final class ReminderService {
 
     /// Cancels and (if applicable) re-creates every notification for one habit.
     func reschedule(for habit: Habit) async {
+        guard habit.isAlive else { return }
+        CrashDiagnostics.note("reschedule reminder")
         let plan = ReminderPlan(habit: habit)
         cancelReminder(habitID: habit.id)
         guard let plan else { return }
@@ -128,8 +130,9 @@ final class ReminderService {
     /// scheduled set always matches what's stored, even after a system reset,
     /// a restore from backup, or a timezone change.
     func syncAll(_ habits: [Habit]) async {
-        let plans = habits.compactMap { ReminderPlan(habit: $0) }
-        let identifiers = habits.flatMap { Self.allIdentifiers(for: $0.id) }
+        let live = habits.filter { $0.isAlive }
+        let plans = live.compactMap { ReminderPlan(habit: $0) }
+        let identifiers = live.flatMap { Self.allIdentifiers(for: $0.id) }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
 
         guard !plans.isEmpty else { return }

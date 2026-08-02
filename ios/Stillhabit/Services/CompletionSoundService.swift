@@ -23,7 +23,14 @@ import Foundation
 import AudioToolbox
 
 /// Synthesizes and plays the soft per-habit completion chime.
+///
+/// A single shared instance owns the rendered WAV and its AudioToolbox sound
+/// ID. Every habit card used to hold its own service, which meant a dozen
+/// instances deleting and rewriting the *same* temporary file — and disposing
+/// each other's sound IDs as rows scrolled in and out of the lazy stack.
 final class CompletionSoundService {
+    /// The one chime for the whole app.
+    static let shared = CompletionSoundService()
 
     private static let sampleRate: Int = 44100
     private static let duration: Double = 0.9
@@ -33,7 +40,7 @@ final class CompletionSoundService {
     private var cachedSoundID: SystemSoundID = 0
     private var hasRendered: Bool = false
 
-    init() {
+    private init() {
         // Intentionally empty — all audio work is deferred to the first
         // playChime() call so view construction never touches the audio stack.
     }
@@ -48,6 +55,7 @@ final class CompletionSoundService {
     /// can't be rendered or loaded, the call degrades to silence — it never aborts.
     func playChime() {
         guard ensureChimeSound() else { return }
+        CrashDiagnostics.note("completion chime")
         AudioServicesPlaySystemSound(cachedSoundID)
     }
 
@@ -61,9 +69,12 @@ final class CompletionSoundService {
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("stillhabit_completion.wav")
-        try? FileManager.default.removeItem(at: url)
 
-        guard writeChimeWAV(to: url) else { return false }
+        // Written atomically, so an existing file is always complete and can
+        // be reused rather than deleted out from under AudioToolbox.
+        if !FileManager.default.fileExists(atPath: url.path) {
+            guard writeChimeWAV(to: url) else { return false }
+        }
 
         var soundID: SystemSoundID = 0
         let status = AudioServicesCreateSystemSoundID(url as CFURL, &soundID)

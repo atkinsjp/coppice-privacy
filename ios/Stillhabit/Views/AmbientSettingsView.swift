@@ -49,9 +49,9 @@ struct AmbientSettingsView: View {
 
             loopRow
         }
-        .padding(20)
-        .frame(width: 248)
-        .background(DesignSystem.Colors.card)
+        .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
+        .padding(.top, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Sound choice

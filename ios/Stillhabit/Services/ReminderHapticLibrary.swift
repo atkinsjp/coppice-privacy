@@ -126,6 +126,7 @@ final class ReminderHapticLibrary {
     /// to a timed `UIImpactFeedbackGenerator` sequence when Core Haptics is
     /// unavailable so the rhythm still reads on older devices.
     func play(_ haptic: ReminderHaptic) {
+        CrashDiagnostics.note("haptic \(haptic.rawValue)")
         fallbackTask?.cancel()
         fallbackTask = nil
 

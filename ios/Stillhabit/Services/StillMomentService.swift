@@ -28,7 +28,13 @@ import Foundation
 import AudioToolbox
 
 /// Synthesizes and plays the soft "Still Moment" singing-bowl chime.
+///
+/// A single shared instance owns the rendered WAV and its AudioToolbox sound
+/// ID, so the file is written exactly once per launch and never deleted while
+/// another instance might still be pointing at it.
 final class StillMomentService {
+    /// The one singing bowl for the whole app.
+    static let shared = StillMomentService()
 
     private static let sampleRate: Int = 44100
     private static let duration: Double = 3.5
@@ -38,7 +44,7 @@ final class StillMomentService {
     private var cachedSoundID: SystemSoundID = 0
     private var hasRendered: Bool = false
 
-    init() {
+    private init() {
         // Intentionally empty — all audio work is deferred to the first
         // playChime() call so view construction never touches the audio stack.
     }
@@ -53,6 +59,7 @@ final class StillMomentService {
     /// rendered or loaded, the call degrades to silence — it never aborts.
     func playChime() {
         guard ensureChimeSound() else { return }
+        CrashDiagnostics.note("still moment chime")
         AudioServicesPlaySystemSound(cachedSoundID)
     }
 
@@ -66,9 +73,12 @@ final class StillMomentService {
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("stillhabit_chime.wav")
-        try? FileManager.default.removeItem(at: url)
 
-        guard writeChimeWAV(to: url) else { return false }
+        // Written atomically, so an existing file is always complete and can
+        // be reused rather than deleted out from under AudioToolbox.
+        if !FileManager.default.fileExists(atPath: url.path) {
+            guard writeChimeWAV(to: url) else { return false }
+        }
 
         // Load the WAV file as a system sound. AudioServicesCreateSystemSoundID
         // is a pure C API with no session configuration and no render thread.
