@@ -36,6 +36,11 @@ struct HabitDetailView: View {
     @State private var reminderHaptic: ReminderHaptic = .breath
     @State private var hasSeededReminder: Bool = false
 
+    /// Latched the instant a close begins. Calling `dismiss()` twice on a sheet
+    /// that is already dismissing raises an uncatchable UIKit exception, and a
+    /// double-tap on a small close button is easy to do by accident.
+    @State private var isClosing = false
+
     private let dayCount = 90
     private let columns = 15
 
@@ -69,6 +74,8 @@ struct HabitDetailView: View {
                 // slack lets the presentation settle first.
                 Color.clear.task {
                     try? await Task.sleep(for: .milliseconds(60))
+                    guard !Task.isCancelled, !isClosing else { return }
+                    isClosing = true
                     dismiss()
                 }
             } else {
@@ -96,6 +103,8 @@ struct HabitDetailView: View {
         }
         .overlay(alignment: .topTrailing) {
             Button {
+                guard !isClosing else { return }
+                isClosing = true
                 commitCadenceIfNeeded()
                 dismiss()
             } label: {

@@ -26,6 +26,14 @@ struct AddHabitView: View {
     @State private var reminderSound: ReminderSound = .chime
     /// The vibration signature this habit's reminder will play.
     @State private var reminderHaptic: ReminderHaptic = .breath
+    /// Latched the instant a save begins. A second tap on "Begin" (or Return on
+    /// the keyboard while the first save is already under way) would otherwise
+    /// insert the habit twice **and** call `dismiss()` on a sheet that is
+    /// already mid-dismissal — UIKit answers a redundant dismissal with an
+    /// Objective-C exception that no Swift `do/catch` can trap, which aborts
+    /// the process. Nothing about the first tap is visible instantly, so a
+    /// second tap is the most natural thing in the world here.
+    @State private var isSaving = false
     @FocusState private var isTitleFocused: Bool
 
     private var trimmedTitle: String {
@@ -120,7 +128,7 @@ struct AddHabitView: View {
                         .background(DesignSystem.habitColor(forHex: selectedHex), in: Capsule())
                 }
                 .buttonStyle(.stillTactileWave(accent: DesignSystem.habitColor(forHex: selectedHex)))
-                .disabled(trimmedTitle.isEmpty)
+                .disabled(trimmedTitle.isEmpty || isSaving)
                 .opacity(trimmedTitle.isEmpty ? 0.4 : 1)
                 .animation(.easeOut(duration: 0.2), value: trimmedTitle.isEmpty)
 
@@ -141,6 +149,11 @@ struct AddHabitView: View {
             // in makes UIKit attach the keyboard to a view controller that is
             // mid-presentation. A beat later the transition has settled.
             try? await Task.sleep(for: .milliseconds(350))
+            // If the sheet was dismissed inside that window the task is
+            // cancelled — but `try?` swallows the cancellation, so without this
+            // check we would install a first responder on a view controller
+            // that is being torn down.
+            guard !Task.isCancelled, !isSaving else { return }
             isTitleFocused = true
         }
     }
@@ -169,7 +182,8 @@ struct AddHabitView: View {
     }
 
     private func save() {
-        guard !trimmedTitle.isEmpty else { return }
+        guard !trimmedTitle.isEmpty, !isSaving else { return }
+        isSaving = true
         CrashDiagnostics.note("save new habit")
 
         // Give up the keyboard first. Tearing a first responder down inside
@@ -218,14 +232,26 @@ struct AddHabitView: View {
         let plan = isReminderEnabled ? ReminderPlan(habit: habit) : nil
         let habitID = habit.id
 
-        dismiss()
+        // Hand the dismissal to the next main-actor turn.
+        //
+        // This method runs inside a SwiftUI button action, which UIKit invokes
+        // from the middle of touch delivery — and the keyboard is almost always
+        // up, because the title field auto-focuses. Resigning a first responder
+        // and starting a sheet dismissal inside that same transaction makes
+        // UIKit tear the keyboard's remote view down while the sheet's own
+        // transition is being installed. One turn later both the touch and the
+        // keyboard resignation have finished, and the dismissal is the only
+        // thing happening.
+        Task { @MainActor in
+            dismiss()
 
-        // Side effects run after the dismissal is under way, so neither the
-        // widget reload nor the notification centre round-trip lands in the
-        // middle of the presentation transaction.
-        SharedStore.notifyWidgets()
-        if plan != nil {
-            Task { await ReminderService.shared.apply(plan, for: habitID) }
+            // Side effects run after the dismissal is under way, so neither the
+            // widget reload nor the notification centre round-trip lands in the
+            // middle of the presentation transaction.
+            SharedStore.notifyWidgets()
+            if plan != nil {
+                await ReminderService.shared.apply(plan, for: habitID)
+            }
         }
     }
 

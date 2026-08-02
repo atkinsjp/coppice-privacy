@@ -99,7 +99,24 @@ enum SharedStore {
     }
 
     /// Asks WidgetKit to re-render all Stillhabit widgets after data changes.
+    ///
+    /// Coalesced and pushed off the main thread on purpose. A reload wakes the
+    /// widget extension, which is a **separate process** that opens the very
+    /// same App Group SQLite store this app is writing to. Firing it inline
+    /// from a button action — several times in a row, as a quick-add or a
+    /// reorder does — relaunches that process against a store the app still
+    /// holds a write lock on. Batching into one call a beat after the last
+    /// change keeps the two processes out of each other's way, and keeps the
+    /// WidgetKit XPC round-trip off the main thread entirely.
     static func notifyWidgets() {
-        WidgetCenter.shared.reloadAllTimelines()
+        reloadWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        reloadWorkItem = work
+        reloadQueue.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
+
+    private static let reloadQueue = DispatchQueue(label: "app.stillhabit.widget-reload", qos: .utility)
+    nonisolated(unsafe) private static var reloadWorkItem: DispatchWorkItem?
 }

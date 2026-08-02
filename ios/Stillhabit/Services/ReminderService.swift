@@ -164,9 +164,17 @@ final class ReminderService {
     /// Renders every custom reminder tone to disk so the first scheduled
     /// notification never races the file write, and warms the haptic engine
     /// so a signature vibration fires without start-up latency.
+    ///
+    /// The tone rendering is handed to a background task: on a fresh install
+    /// none of the WAVs exist yet, and synthesizing them is hundreds of
+    /// thousands of `sin`/`exp` evaluations plus four file writes — work that
+    /// has no business happening on the main thread while the first screen is
+    /// still being laid out.
     func prepareSounds() {
-        ReminderSoundLibrary.shared.prepareAll()
         ReminderHapticLibrary.shared.prepare()
+        Task.detached(priority: .utility) {
+            ReminderSoundLibrary.shared.prepareAll()
+        }
     }
 
     /// Registers the calendar triggers for one plan.

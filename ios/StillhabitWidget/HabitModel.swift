@@ -171,7 +171,11 @@ extension Habit {
                 cursor = yesterday
             }
             var streak = 0
-            while completedDays.contains(cursor) {
+            // Bounded by the data itself: a streak can never be longer than the
+            // number of days actually recorded. The widget runs in a separate
+            // process holding the shared store open, so a runaway loop here
+            // would wedge that process while the app waits on the same store.
+            while streak < completedDays.count, completedDays.contains(cursor) {
                 streak += 1
                 guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
                 cursor = previous
@@ -190,7 +194,7 @@ extension Habit {
                 cursor = prev
             }
             var streak = 0
-            while completedDays.contains(cursor) {
+            while streak < completedDays.count, completedDays.contains(cursor) {
                 streak += 1
                 guard let prev = previousScheduledDay(from: cursor, weekdays: weekdays, calendar: calendar) else { break }
                 cursor = prev
@@ -198,13 +202,16 @@ extension Habit {
             return streak
 
         case .weeklyTarget(let target):
+            // A non-positive target makes the comparison permanently true,
+            // which would walk backwards through the calendar forever.
+            guard target > 0 else { return 0 }
             var cursor = Date()
             if completionsThisWeek(on: cursor) < target {
                 guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { return 0 }
                 cursor = lastWeek
             }
             var streak = 0
-            while completionsThisWeek(on: cursor) >= target {
+            while streak < Self.streakIterationLimit, completionsThisWeek(on: cursor) >= target {
                 streak += 1
                 guard let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: cursor) else { break }
                 cursor = lastWeek
@@ -212,6 +219,9 @@ extension Habit {
             return streak
         }
     }
+
+    /// Hard ceiling on any backwards calendar walk. Matches the app target.
+    private static let streakIterationLimit = 520
 
     /// The next scheduled day strictly after the given day, or nil.
     private func nextScheduledDay(from date: Date, weekdays: [Int], calendar: Calendar) -> Date? {

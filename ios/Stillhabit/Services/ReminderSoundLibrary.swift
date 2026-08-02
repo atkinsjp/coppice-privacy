@@ -79,23 +79,25 @@ nonisolated enum ReminderSound: String, CaseIterable, Identifiable, Sendable {
 
 /// Renders the reminder tones to disk and hands out `UNNotificationSound`
 /// values plus in-app previews. A single shared instance caches everything.
-final class ReminderSoundLibrary {
+///
+/// Deliberately **not** main-actor isolated. Rendering four tones means about
+/// four and a half seconds of audio synthesized sample by sample and written
+/// out as WAV — hundreds of thousands of `sin`/`exp` evaluations plus disk
+/// I/O. That ran on the main thread at launch on every fresh install (the
+/// files don't exist yet), stalling the very first frames of the app. It now
+/// runs on a utility queue; the small mutable caches are guarded by a lock.
+nonisolated final class ReminderSoundLibrary: @unchecked Sendable {
     static let shared = ReminderSoundLibrary()
 
     private static let sampleRate: Int = 44100
 
+    private let lock = NSLock()
     /// Filenames already rendered into `Library/Sounds` this session.
     private var renderedFiles: Set<String> = []
     /// Cached AudioToolbox sound IDs used for previews, keyed by tone.
     private var previewSoundIDs: [ReminderSound: SystemSoundID] = [:]
 
     private init() {}
-
-    deinit {
-        for id in previewSoundIDs.values where id != 0 {
-            AudioServicesDisposeSystemSoundID(id)
-        }
-    }
 
     // MARK: - Notification sounds
 
@@ -145,7 +147,11 @@ final class ReminderSoundLibrary {
     }
 
     private func previewSoundID(for sound: ReminderSound) -> SystemSoundID? {
-        if let cached = previewSoundIDs[sound], cached != 0 { return cached }
+        lock.lock()
+        let cached = previewSoundIDs[sound]
+        lock.unlock()
+        if let cached, cached != 0 { return cached }
+
         guard let fileName = sound.fileName,
               ensureFile(for: sound, fileName: fileName),
               let url = Self.soundsDirectory()?.appendingPathComponent(fileName) else { return nil }
@@ -153,7 +159,9 @@ final class ReminderSoundLibrary {
         var soundID: SystemSoundID = 0
         let status = AudioServicesCreateSystemSoundID(url as CFURL, &soundID)
         guard status == noErr, soundID != 0 else { return nil }
+        lock.lock()
         previewSoundIDs[sound] = soundID
+        lock.unlock()
         return soundID
     }
 
@@ -162,19 +170,27 @@ final class ReminderSoundLibrary {
     /// Ensures the WAV for a tone exists in `Library/Sounds`. Returns false on
     /// any filesystem failure so callers can fall back to the system sound.
     private func ensureFile(for sound: ReminderSound, fileName: String) -> Bool {
-        if renderedFiles.contains(fileName) { return true }
+        lock.lock()
+        let alreadyRendered = renderedFiles.contains(fileName)
+        lock.unlock()
+        if alreadyRendered { return true }
+
         guard let directory = Self.soundsDirectory() else { return false }
 
         let url = directory.appendingPathComponent(fileName)
         if FileManager.default.fileExists(atPath: url.path) {
+            lock.lock()
             renderedFiles.insert(fileName)
+            lock.unlock()
             return true
         }
 
         let samples = Self.samples(for: sound)
         guard !samples.isEmpty, Self.writeWAV(samples: samples, to: url) else { return false }
 
+        lock.lock()
         renderedFiles.insert(fileName)
+        lock.unlock()
         return true
     }
 
