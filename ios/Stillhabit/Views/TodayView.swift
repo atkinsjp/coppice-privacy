@@ -23,7 +23,10 @@ struct TodayView: View {
     /// (`.daily`, `.specificDays`, `.weeklyTarget`) are evaluated client-side
     /// because SwiftData `#Predicate` can't call custom enum logic.
     private var scheduledHabits: [Habit] {
-        allHabits.filter { $0.isScheduledForToday }
+        // `isAlive` filters out models that were deleted but are still being
+        // held by SwiftUI during their removal transition — reading their
+        // properties would raise NSObjectInaccessibleException and abort.
+        allHabits.filter { $0.isAlive && $0.isScheduledForToday }
     }
 
     /// The visible habit list, ordered by the current sort mode. `.manual`
@@ -102,9 +105,10 @@ struct TodayView: View {
     private var weekCompletionRatios: [Double] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
+        let liveHabits = allHabits.filter { $0.isAlive }
         return (0..<7).reversed().map { offset in
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
-            let scheduled = allHabits.filter { $0.isScheduled(on: day) }
+            let scheduled = liveHabits.filter { $0.isScheduled(on: day) }
             guard !scheduled.isEmpty else { return 0 }
             let done = scheduled.filter { $0.isCompleted(on: day) }.count
             return Double(done) / Double(scheduled.count)
@@ -145,18 +149,10 @@ struct TodayView: View {
                                     selectedHabit = habit
                                 },
                                 onRest: {
-                                    ReminderService.shared.cancelReminder(habitID: habit.id)
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        habit.isArchived = true
-                                    }
-                                    SharedStore.notifyWidgets()
+                                    rest(habit)
                                 },
                                 onDelete: {
-                                    ReminderService.shared.cancelReminder(habitID: habit.id)
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        modelContext.delete(habit)
-                                    }
-                                    SharedStore.notifyWidgets()
+                                    delete(habit)
                                 },
                                 onReorder: { fromIndex, toIndex in
                                     reorderHabits(from: fromIndex, to: toIndex)
@@ -423,6 +419,35 @@ struct TodayView: View {
         }
     }
 
+    // MARK: - Rest & delete
+
+    /// Archives a habit and cancels its pending reminders.
+    private func rest(_ habit: Habit) {
+        guard habit.isAlive else { return }
+        if selectedHabit?.id == habit.id { selectedHabit = nil }
+        ReminderService.shared.cancelReminder(habitID: habit.id)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            habit.isArchived = true
+        }
+        try? modelContext.save()
+        SharedStore.notifyWidgets()
+    }
+
+    /// Permanently removes a habit. Everything that reads the model — the
+    /// open detail sheet, the pending reminders — is torn down *before* the
+    /// delete, and the context is saved immediately so no view is left
+    /// holding a deleted object it might try to read from.
+    private func delete(_ habit: Habit) {
+        guard habit.isAlive else { return }
+        if selectedHabit?.id == habit.id { selectedHabit = nil }
+        ReminderService.shared.cancelReminder(habitID: habit.id)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            modelContext.delete(habit)
+        }
+        try? modelContext.save()
+        SharedStore.notifyWidgets()
+    }
+
     // MARK: - Reorder
 
     /// Reorders the manually-ordered habit list by rewriting the persisted
@@ -431,6 +456,7 @@ struct TodayView: View {
     /// filtered to today's scheduled habits and sorted by `order`).
     private func reorderHabits(from: Int, to: Int) {
         var ordered = scheduledHabits.sorted { $0.order < $1.order }
+        guard !ordered.isEmpty else { return }
         guard from >= 0, from < ordered.count, to >= 0, to < ordered.count else { return }
         let moved = ordered.remove(at: from)
         ordered.insert(moved, at: to)

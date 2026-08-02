@@ -14,6 +14,14 @@ struct RestingHabitsView: View {
     @Query(filter: #Predicate<Habit> { $0.isArchived }, sort: \Habit.createdAt)
     private var restingHabits: [Habit]
 
+    /// Archived habits that are still backed by a live store object. A model
+    /// deleted a moment ago can linger in the query result while its removal
+    /// animates; reading its properties then raises
+    /// NSObjectInaccessibleException and aborts the app.
+    private var liveRestingHabits: [Habit] {
+        restingHabits.filter { $0.isAlive }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Resting")
@@ -21,7 +29,7 @@ struct RestingHabitsView: View {
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .padding(.top, 24)
 
-            if restingHabits.isEmpty {
+            if liveRestingHabits.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "moon.zzz")
                         .font(.system(size: 26, weight: .light))
@@ -35,7 +43,7 @@ struct RestingHabitsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
-                        ForEach(restingHabits) { habit in
+                        ForEach(liveRestingHabits) { habit in
                             restingRow(habit)
                         }
                     }
@@ -67,9 +75,11 @@ struct RestingHabitsView: View {
             Spacer()
 
             Button {
+                guard habit.isAlive else { return }
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     habit.isArchived = false
                 }
+                try? modelContext.save()
                 SharedStore.notifyWidgets()
                 // A resting habit's reminder was cancelled — restore it.
                 if habit.hasReminder {
@@ -84,10 +94,12 @@ struct RestingHabitsView: View {
             .accessibilityLabel("Bring back \(habit.title)")
 
             Button {
+                guard habit.isAlive else { return }
                 ReminderService.shared.cancelReminder(habitID: habit.id)
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     modelContext.delete(habit)
                 }
+                try? modelContext.save()
                 SharedStore.notifyWidgets()
             } label: {
                 Image(systemName: "trash")

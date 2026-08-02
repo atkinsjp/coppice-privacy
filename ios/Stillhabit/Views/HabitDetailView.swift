@@ -58,6 +58,13 @@ struct HabitDetailView: View {
         ZStack {
             backgroundWash
 
+            // The habit can be deleted from underneath this sheet (from the
+            // Today list or the resting sheet). Reading a deleted model raises
+            // NSObjectInaccessibleException and aborts, so the sheet empties
+            // itself and closes instead.
+            if !habit.isAlive {
+                Color.clear.onAppear { dismiss() }
+            } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 36) {
                     header
@@ -77,6 +84,7 @@ struct HabitDetailView: View {
                 .padding(.horizontal, DesignSystem.Layout.horizontalPadding)
                 .padding(.top, 28)
                 .padding(.bottom, 48)
+            }
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -99,6 +107,7 @@ struct HabitDetailView: View {
         }
         .presentationBackground(DesignSystem.Colors.background)
         .onAppear {
+            guard habit.isAlive else { return }
             seedCadenceEditor()
             seedReminderEditor()
             animateStatsIn()
@@ -282,6 +291,7 @@ struct HabitDetailView: View {
     /// Writes the reminder state back to the habit and re-registers the
     /// notifications with the system. No-op when nothing actually changed.
     private func commitReminder() {
+        guard habit.isAlive else { return }
         let resolved: Int? = isReminderEnabled ? Habit.minuteOfDay(from: reminderTime) : nil
         let resolvedSound: ReminderSound = isReminderEnabled ? reminderSound : habit.reminderSound
         let resolvedHaptic: ReminderHaptic = isReminderEnabled ? reminderHaptic : habit.reminderHaptic
@@ -394,6 +404,7 @@ struct HabitDetailView: View {
     /// completion chime plays only when a day is being marked complete — never
     /// when one is being cleared.
     private func toggleDay(_ date: Date) {
+        guard habit.isAlive else { return }
         let willComplete = !habit.isCompleted(on: date)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             habit.toggleCompletion(on: date)

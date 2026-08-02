@@ -103,6 +103,8 @@ final class AmbientSoundPlayer {
 
     private var player: AVAudioPlayer?
     private var fadeOutTask: Task<Void, Never>?
+    /// The audio session category is set exactly once per launch.
+    private var hasConfiguredSession = false
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.preferenceKey) ?? ""
@@ -166,7 +168,12 @@ final class AmbientSoundPlayer {
 
     /// Resumes the loop if a soundscape is active (app returned to foreground).
     func resume() {
-        guard current != .off, let player else { return }
+        guard current != .off else { return }
+        guard let player else {
+            // The player was never built (or was torn down) — start fresh.
+            play(current)
+            return
+        }
         if !player.isPlaying {
             player.play()
         }
@@ -184,13 +191,7 @@ final class AmbientSoundPlayer {
         fadeOutTask?.cancel()
         fadeOutTask = nil
 
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.ambient, options: [.mixWithOthers])
-            try session.setActive(true)
-        } catch {
-            print("AmbientSoundPlayer: audio session error — \(error.localizedDescription)")
-        }
+        configureSessionIfNeeded()
 
         // Fade out any previous loop before swapping.
         if let old = player, old.isPlaying {
@@ -207,6 +208,23 @@ final class AmbientSoundPlayer {
             player = newPlayer
         } catch {
             print("AmbientSoundPlayer: failed to load \(name) — \(error.localizedDescription)")
+        }
+    }
+
+    /// Sets the ambient, mix-with-others category a single time.
+    ///
+    /// Deliberately does **not** call `setActive(true)`: on the iOS 26
+    /// simulator that call can `abort()` inside the C++ audio-session code,
+    /// outside any Swift `do/catch`, taking the whole app down with SIGABRT.
+    /// `AVAudioPlayer.play()` activates the session implicitly, so the loop
+    /// still plays and still mixes politely with other audio.
+    private func configureSessionIfNeeded() {
+        guard !hasConfiguredSession else { return }
+        hasConfiguredSession = true
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        } catch {
+            print("AmbientSoundPlayer: audio session error — \(error.localizedDescription)")
         }
     }
 

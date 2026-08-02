@@ -96,7 +96,7 @@ struct HabitRowView: View {
     /// from the view, the phone locking, and the app being killed — when the
     /// card re-appears it reads as running again if the habit still has a
     /// live start anchor.
-    private var isTimerRunning: Bool { habit.timerStart != nil }
+    private var isTimerRunning: Bool { habit.isAlive && habit.timerStart != nil }
 
     /// Whether the `whyString` should be visible right now. Each habit type
     /// has its own trigger: check-in reveals on press-and-hold (the moment
@@ -216,20 +216,27 @@ struct HabitRowView: View {
 
     var body: some View {
         ZStack {
-            swipeHint
-            quickActions
-            if isEditing {
-                inlineEditor
-            } else {
-                card
+            // A deleted habit is kept on screen by SwiftUI for the length of
+            // its removal transition. Reading any property of it in that
+            // window raises NSObjectInaccessibleException and aborts, so the
+            // card collapses to nothing the moment the model goes away.
+            if habit.isAlive {
+                swipeHint
+                quickActions
+                if isEditing {
+                    inlineEditor
+                } else {
+                    card
+                }
             }
         }
         .onAppear {
+            guard habit.isAlive else { return }
             seedTimerDisplay()
             lastSeenStreak = habit.currentStreak
         }
         .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
-            guard isTimerRunning else { return }
+            guard habit.isAlive, isTimerRunning else { return }
             tickTimer()
         }
     }

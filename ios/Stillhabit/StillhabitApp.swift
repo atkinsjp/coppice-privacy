@@ -16,6 +16,7 @@ struct StillhabitApp: App {
     @State private var store: StoreViewModel
 
     init() {
+        CrashDiagnostics.install()
         #if DEBUG
         Purchases.logLevel = .warn
         Purchases.configure(withAPIKey: Config.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY)
