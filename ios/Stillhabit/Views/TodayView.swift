@@ -243,13 +243,17 @@ struct TodayView: View {
         }
     }
 
-    /// Opens the add sheet, or the paywall when the free limit is reached.
+    /// Opens the add sheet, or asks the root view to raise the paywall when
+    /// the free limit is reached.
     private func requestNewHabit(habitCount: Int) {
         // `hasFullAccess` is true for subscribers *and* for anyone still
         // inside the 72-hour local grace window, so a brand-new user is never
         // stopped by the paywall.
         if !store.hasFullAccess && habitCount >= StoreViewModel.freeHabitLimit {
-            present(.paywall)
+            // The paywall is a full-screen lock owned by `ContentView`; a
+            // second presentation attached to this view could race the sheet.
+            guard route == nil else { return }
+            store.isPaywallRequested = true
         } else {
             present(.addHabit)
         }
@@ -285,8 +289,6 @@ struct TodayView: View {
                     route = nil
                 }
             }
-        case .paywall:
-            PaywallView()
         case .weeklyGraph:
             WeeklyGraphView()
         case .settings:
@@ -598,6 +600,10 @@ struct TodayView: View {
     /// fade on their own, and the message and cards return as the visual
     /// settles back to the resting earthy state.
     private func triggerStillMoment() {
+        // The paywall promises the Still Moment as a Pro keepsake, so it stays
+        // honest: once the grace window closes, the day still completes and
+        // the progress bar still fills — the sensory reward simply rests.
+        guard store.hasFullAccess else { return }
         CrashDiagnostics.note("still moment")
         stillMomentService.playChime()
         playHeartbeatHaptic()
@@ -678,7 +684,6 @@ enum TodayRoute: Identifiable, Equatable {
     /// The habit detail sheet, identified by habit ID rather than by model —
     /// a deleted SwiftData object read during dismissal aborts the process.
     case detail(UUID)
-    case paywall
     case weeklyGraph
     case settings
 
@@ -687,7 +692,6 @@ enum TodayRoute: Identifiable, Equatable {
         case .addHabit:         return "addHabit"
         case .resting:          return "resting"
         case .detail(let id):   return "detail-\(id.uuidString)"
-        case .paywall:          return "paywall"
         case .weeklyGraph:      return "weeklyGraph"
         case .settings:         return "settings"
         }

@@ -22,6 +22,14 @@ final class StoreViewModel {
     var isPurchasing = false
     var errorMessage: String?
 
+    /// Set from anywhere in the app to ask the root view to raise the paywall.
+    ///
+    /// The paywall is a `fullScreenCover` owned by `ContentView`, not a sheet
+    /// owned by `TodayView` — two presentations racing on the same view is the
+    /// exact pattern that aborts this app, so the lock lives one level up and
+    /// is requested through this flag rather than presented locally.
+    var isPaywallRequested = false
+
     init() {
         guard Purchases.isConfigured else { return }
         Task { await listenForUpdates() }
