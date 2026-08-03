@@ -40,9 +40,10 @@ struct AddHabitView: View {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Pro members choose from the full muted palette.
+    /// Pro members — and anyone still inside the 72-hour local grace window —
+    /// choose from the full muted palette.
     private var availablePalette: [DesignSystem.HabitColor] {
-        store.isPremium ? DesignSystem.palette + DesignSystem.premiumPalette : DesignSystem.palette
+        store.hasFullAccess ? DesignSystem.palette + DesignSystem.premiumPalette : DesignSystem.palette
     }
 
     var body: some View {

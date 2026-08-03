@@ -13,6 +13,14 @@ struct StillhabitApp: App {
     private let container: ModelContainer = SharedStore.makeContainer()
     @State private var store: StoreViewModel
 
+    /// The user's theme override. Applied once here at the window root so
+    /// every sheet inherits it too.
+    @AppStorage(AppearanceMode.storageKey) private var appearanceRaw: String = AppearanceMode.system.rawValue
+
+    private var appearance: AppearanceMode {
+        AppearanceMode(rawValue: appearanceRaw) ?? .system
+    }
+
     /// Keeps reminder banners visible while the app is in the foreground.
     ///
     /// `UNUserNotificationCenter.delegate` is a **weak** reference, so the
@@ -37,6 +45,7 @@ struct StillhabitApp: App {
         WindowGroup {
             ContentView()
                 .environment(store)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .modelContainer(container)
     }

@@ -28,6 +28,22 @@ final class StoreViewModel {
         Task { await fetchOfferings() }
     }
 
+    /// Whether every Pro feature is open right now.
+    ///
+    /// True for paying subscribers **and** for anyone inside the 72-hour,
+    /// no-card-required grace window that starts at first launch. Every
+    /// premium gate in the app reads this rather than `isPremium`, so the
+    /// paywall never interrupts a brand-new user.
+    var hasFullAccess: Bool {
+        isPremium || GracePeriod.isActive
+    }
+
+    /// True while access is granted by the local grace period rather than by
+    /// a purchase — used to show the quiet countdown in Settings.
+    var isGracePeriodActive: Bool {
+        !isPremium && GracePeriod.isActive
+    }
+
     var monthlyPackage: Package? {
         offerings?.current?.availablePackages.first { $0.packageType == .monthly }
     }

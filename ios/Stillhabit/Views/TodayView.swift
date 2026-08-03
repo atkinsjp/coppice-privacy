@@ -245,7 +245,10 @@ struct TodayView: View {
 
     /// Opens the add sheet, or the paywall when the free limit is reached.
     private func requestNewHabit(habitCount: Int) {
-        if !store.isPremium && habitCount >= StoreViewModel.freeHabitLimit {
+        // `hasFullAccess` is true for subscribers *and* for anyone still
+        // inside the 72-hour local grace window, so a brand-new user is never
+        // stopped by the paywall.
+        if !store.hasFullAccess && habitCount >= StoreViewModel.freeHabitLimit {
             present(.paywall)
         } else {
             present(.addHabit)
@@ -286,12 +289,8 @@ struct TodayView: View {
             PaywallView()
         case .weeklyGraph:
             WeeklyGraphView()
-        case .ambientSettings:
-            AmbientSettingsView(player: ambientPlayer)
-                .presentationDetents([.height(300)])
-                .presentationBackground(DesignSystem.Colors.card)
-                .presentationCornerRadius(28)
-                .presentationDragIndicator(.visible)
+        case .settings:
+            SettingsView(player: ambientPlayer)
         }
     }
 
@@ -333,10 +332,11 @@ struct TodayView: View {
 
                 Spacer()
 
-                // Trailing action buttons — a primary "+" and a single
-                // options menu that consolidates sort, analytics, and ambient.
+                // Trailing action buttons — a primary "+" and the utilities
+                // sheet. Everything secondary (appearance, order, ambient
+                // sound, subscription, support) lives behind the slider.
                 HStack(spacing: 8) {
-                    optionsMenu
+                    settingsButton
 
                     Button {
                         requestNewHabit(habitCount: habitCount)
@@ -367,6 +367,16 @@ struct TodayView: View {
     /// current day is quietly anchored. Empty days (no scheduled habits) sit as
     /// faint hollow dots, a visual rest rather than a gap.
     private func weekDotCalendar(ratios: [Double]) -> some View {
+        Button {
+            present(.weeklyGraph)
+        } label: {
+            weekDotRow(ratios: ratios)
+        }
+        .buttonStyle(.stillQuietPress)
+        .accessibilityHint("Opens analytics and streaks")
+    }
+
+    private func weekDotRow(ratios: [Double]) -> some View {
         let initials = weekDayInitials
         let todayIndex = ratios.count - 1
 
@@ -408,8 +418,18 @@ struct TodayView: View {
                 .accessibilityElement()
                 .accessibilityLabel(dotAccessibilityLabel(index: index, ratio: ratio, initials: initials))
             }
+
+            Spacer(minLength: 4)
+
+            // A quiet affordance: the week row is the way into analytics.
+            Image(systemName: "chart.bar")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .padding(.top, 15)
+                .accessibilityHidden(true)
         }
         .padding(.top, 2)
+        .contentShape(.rect)
     }
 
     /// VoiceOver label for a single day dot in the 7-day calendar.
@@ -423,47 +443,15 @@ struct TodayView: View {
         return "\(dayName) — no completions"
     }
 
-    // MARK: - Options menu
+    // MARK: - Settings button
 
-    /// A single trailing menu button (`ellipsis`) that consolidates the
-    /// secondary actions: sort order, analytics & streaks, and ambient
-    /// sound mute/unmute. The primary "+" button stays standalone so the
-    /// most common action remains a single tap.
-    private var optionsMenu: some View {
-        Menu {
-            Picker("Sort habits", selection: Binding(
-                get: { sortMode },
-                set: { newMode in
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        sortModeRaw = newMode.rawValue
-                    }
-                }
-            )) {
-                ForEach(HabitSortMode.allCases) { mode in
-                    Label(mode.label, systemImage: mode.icon).tag(mode)
-                }
-            }
-
-            Button {
-                present(.weeklyGraph)
-            } label: {
-                Label("Analytics & Streaks", systemImage: "chart.bar")
-            }
-
-            Button {
-                ambientPlayer.toggleMuted()
-            } label: {
-                Label(
-                    ambientPlayer.isMuted ? "Unmute Ambient Sounds" : "Mute Ambient Sounds",
-                    systemImage: ambientPlayer.isMuted ? "speaker.slash" : "speaker.wave.2"
-                )
-            }
-
-            Button {
-                present(.ambientSettings)
-            } label: {
-                Label("Ambient Sound Settings…", systemImage: "speaker.wave.1")
-            }
+    /// The utilities entry point. A plain button rather than a menu: a `Menu`
+    /// that dismisses while a presentation begins is one of the races that can
+    /// abort the process, and every secondary control now has a calm home
+    /// inside the sheet.
+    private var settingsButton: some View {
+        Button {
+            present(.settings)
         } label: {
             Image(systemName: "slider.horizontal.3")
                 .font(.system(size: 14, weight: .medium))
@@ -474,8 +462,8 @@ struct TodayView: View {
         }
         .frame(width: 36, height: 36)
         .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
-        .accessibilityLabel("Options")
-        .accessibilityHint("Sort habits, view analytics, or toggle ambient sounds")
+        .accessibilityLabel("Settings")
+        .accessibilityHint("Appearance, order, ambient sound, and subscription")
     }
 
     // MARK: - Rest & delete
@@ -692,7 +680,7 @@ enum TodayRoute: Identifiable, Equatable {
     case detail(UUID)
     case paywall
     case weeklyGraph
-    case ambientSettings
+    case settings
 
     var id: String {
         switch self {
@@ -701,7 +689,7 @@ enum TodayRoute: Identifiable, Equatable {
         case .detail(let id):   return "detail-\(id.uuidString)"
         case .paywall:          return "paywall"
         case .weeklyGraph:      return "weeklyGraph"
-        case .ambientSettings:  return "ambientSettings"
+        case .settings:         return "settings"
         }
     }
 }

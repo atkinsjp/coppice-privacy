@@ -13,6 +13,12 @@ struct ContentView: View {
 
     var body: some View {
         TodayView()
+            .onAppear {
+                // Stamps the first-ever launch, which opens the 72-hour,
+                // no-card-required window in which every Pro feature is
+                // unlocked. Idempotent — only the first call ever writes.
+                GracePeriod.startIfNeeded()
+            }
             .task { await syncReminders() }
     }
 
