@@ -43,7 +43,7 @@ struct SettingsView: View {
         HabitSortMode(rawValue: sortModeRaw) ?? .manual
     }
 
-    private let feedbackAddress = "hello@stillhabit.app"
+    private let feedbackAddress = "support@atkinsmedia.io"
 
     var body: some View {
         ScrollView {
