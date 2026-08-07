@@ -138,6 +138,14 @@ struct TodayView: View {
     /// after the view is torn down.
     @State private var stillMomentTask: Task<Void, Never>?
 
+    /// True while the post-purchase petal-and-ripple celebration is on
+    /// screen. Triggered by `StoreViewModel.purchaseCelebrationTick`, which
+    /// only moves on a genuine purchase — never on the launch-time
+    /// entitlement refresh for existing subscribers.
+    @State private var isProCelebrationActive = false
+    /// Timer for the celebration's own lifetime, cancelled on disappear.
+    @State private var proCelebrationTask: Task<Void, Never>?
+
     private var dateLine: String {
         Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased()
     }
@@ -214,6 +222,16 @@ struct TodayView: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay {
+            // The purchase thank-you floats over everything but blocks
+            // nothing — the list stays scrollable and tappable underneath.
+            if isProCelebrationActive {
+                ProCelebrationView()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.8), value: isProCelebrationActive)
         .animation(.easeInOut(duration: 0.8), value: snapshot.allComplete)
         .animation(.easeInOut(duration: 0.8), value: isStillMomentActive)
         .sheet(item: $route) { destination in
@@ -225,10 +243,15 @@ struct TodayView: View {
         }
         .onDisappear {
             stillMomentTask?.cancel()
+            proCelebrationTask?.cancel()
         }
         .onChange(of: snapshot.allComplete) { oldValue, newValue in
             guard !oldValue, newValue else { return }
             triggerStillMoment()
+        }
+        .onChange(of: store.purchaseCelebrationTick) { oldValue, newValue in
+            guard newValue > oldValue else { return }
+            celebratePurchase()
         }
         .onChange(of: scenePhase) { _, newPhase in
             CrashDiagnostics.note("scene phase \(newPhase)")
@@ -616,6 +639,34 @@ struct TodayView: View {
             guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 1.2)) {
                 isStillMomentActive = false
+            }
+        }
+    }
+
+    // MARK: - Purchase celebration
+
+    /// Plays the quiet post-purchase thank-you: a beat of patience while the
+    /// paywall cover finishes dismissing, then the sage ripple and drifting
+    /// petals bloom over the Today screen for a few seconds and fade out on
+    /// their own. Purely additive — nothing is disabled and nothing blocks.
+    private func celebratePurchase() {
+        CrashDiagnostics.note("pro celebration")
+        proCelebrationTask?.cancel()
+        proCelebrationTask = Task {
+            // The purchase completes while the paywall is still covering the
+            // screen; ContentView dismisses it on the same `isPremium` flip.
+            // Waiting out that transition means the celebration lands on the
+            // Today view itself, not behind a departing cover.
+            try? await Task.sleep(for: .milliseconds(750))
+            guard !Task.isCancelled else { return }
+            playHeartbeatHaptic()
+            withAnimation(.easeOut(duration: 0.5)) {
+                isProCelebrationActive = true
+            }
+            try? await Task.sleep(for: .seconds(3.6))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.9)) {
+                isProCelebrationActive = false
             }
         }
     }

@@ -30,6 +30,16 @@ final class StoreViewModel {
     /// is requested through this flag rather than presented locally.
     var isPaywallRequested = false
 
+    /// Incremented exactly once each time a purchase completes and the
+    /// entitlement turns active. The Today view watches this to play its
+    /// quiet celebration.
+    ///
+    /// A counter rather than reusing `isPremium`: the customer-info stream
+    /// also flips `isPremium` to true a moment after every launch for
+    /// existing subscribers, and celebrating a cold start would be absurd.
+    /// This only moves inside `purchase(package:)`, on genuine success.
+    var purchaseCelebrationTick = 0
+
     init() {
         guard Purchases.isConfigured else { return }
         Task { await listenForUpdates() }
@@ -83,7 +93,11 @@ final class StoreViewModel {
         do {
             let result = try await Purchases.shared.purchase(package: package)
             if !result.userCancelled {
+                let wasPremium = isPremium
                 isPremium = result.customerInfo.entitlements[Self.entitlementID]?.isActive == true
+                if isPremium && !wasPremium {
+                    purchaseCelebrationTick += 1
+                }
             }
         } catch ErrorCode.purchaseCancelledError {
             // The user changed their mind — not an error.
