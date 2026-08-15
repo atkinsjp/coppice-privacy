@@ -17,7 +17,7 @@ enum WidgetStore {
     /// in the app target — same candidates, same order, same writability probe,
     /// so both processes always resolve the same container.
     static let appGroupIDCandidates = [
-        "group.app.rork.ruluo6lxh53x1n5ogz4q1",
+        "group.com.atkinsmedia.stillhabit",
     ]
 
     /// First app group whose container is actually writable in this environment.

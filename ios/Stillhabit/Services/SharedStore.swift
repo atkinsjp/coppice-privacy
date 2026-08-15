@@ -25,7 +25,7 @@ enum SharedStore {
     /// project group is the one provisioned on the cloud simulator. Must match
     /// both targets' entitlements and `WidgetStore.appGroupIDCandidates`.
     static let appGroupIDCandidates = [
-        "group.app.rork.ruluo6lxh53x1n5ogz4q1",
+        "group.com.atkinsmedia.stillhabit",
     ]
 
     /// True when the most recent `makeContainer()` call succeeded with a
