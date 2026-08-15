@@ -3,6 +3,10 @@
 //  StillhabitWidget
 //
 //  Opens the same App Group SwiftData store the main app writes to.
+//  The widget intentionally does NOT use CloudKit — extensions have
+//  limited execution time and can't maintain a sync session. The widget
+//  reads and writes locally; the main app's CloudKit sync picks up any
+//  widget-side changes on its next run.
 //
 
 import Foundation
@@ -36,6 +40,9 @@ enum WidgetStore {
         return nil
     }
 
+    /// Opens the shared App Group store WITHOUT CloudKit. The main app adds
+    /// CloudKit sync on top of the same SQLite file; the widget just reads
+    /// and writes locally, and those changes are synced up by the main app.
     static func makeContainer() throws -> ModelContainer {
         guard let groupID = resolvedAppGroupID() else {
             return try ModelContainer(for: Habit.self)

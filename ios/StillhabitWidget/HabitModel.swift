@@ -42,32 +42,64 @@ struct HabitLog: Codable, Equatable, Hashable, Identifiable {
 
 @Model
 final class Habit {
-    var id: UUID
-    var title: String
-    var createdAt: Date
-    var completedDates: [Date]
-    var colorHex: String
-    var isArchived: Bool
-    var cadence: HabitCadence
-    var type: HabitType
-    var logs: [HabitLog]
+    // Inline defaults required by CloudKit's SwiftData integration.
+    // Must stay schema-identical with the app target.
+    var id: UUID = UUID()
+    var title: String = ""
+    var createdAt: Date = Date()
+    var completedDates: [Date] = []
+    var colorHex: String = ""
+    var isArchived: Bool = false
+    /// JSON-encoded `HabitCadence`. Must stay schema-identical with the app target.
+    var cadenceData: Data? = nil
+    /// JSON-encoded `HabitType`. Must stay schema-identical with the app target.
+    var typeData: Data? = nil
+    /// JSON-encoded `[HabitLog]`. Must stay schema-identical with the app target.
+    var logsData: Data? = nil
     /// Wall-clock anchor for an actively running `.duration` focus timer.
-    /// Must stay schema-identical with the app target.
-    var timerStart: Date?
-    /// Optional intentionality anchor. Must stay schema-identical with the app target.
-    var whyString: String?
-    /// Manual ordering for the Today list. Must stay schema-identical with the
-    /// app target. Lower values appear first.
-    var order: Int
+    var timerStart: Date? = nil
+    /// Optional intentionality anchor.
+    var whyString: String? = nil
+    /// Manual ordering for the Today list. Lower values appear first.
+    var order: Int = 0
     /// Minutes since local midnight for the habit's reminder, or nil.
-    /// Must stay schema-identical with the app target.
-    var reminderMinuteOfDay: Int?
-    /// Raw value of the reminder tone. Must stay schema-identical with the app
-    /// target; the widget itself never reads it.
-    var reminderSoundRaw: String?
-    /// Raw value of the reminder haptic signature. Must stay schema-identical
-    /// with the app target; the widget itself never reads it.
-    var reminderHapticRaw: String?
+    var reminderMinuteOfDay: Int? = nil
+    /// Raw value of the reminder tone.
+    var reminderSoundRaw: String? = nil
+    /// Raw value of the reminder haptic signature.
+    var reminderHapticRaw: String? = nil
+
+    // MARK: - CloudKit-compatible typed accessors
+
+    private static let jsonEncoder = JSONEncoder()
+    private static let jsonDecoder = JSONDecoder()
+
+    var cadence: HabitCadence {
+        get {
+            guard let data = cadenceData,
+                  let decoded = try? Self.jsonDecoder.decode(HabitCadence.self, from: data) else { return .daily }
+            return decoded
+        }
+        set { cadenceData = try? Self.jsonEncoder.encode(newValue) }
+    }
+
+    var type: HabitType {
+        get {
+            guard let data = typeData,
+                  let decoded = try? Self.jsonDecoder.decode(HabitType.self, from: data) else { return .checkIn }
+            return decoded
+        }
+        set { typeData = try? Self.jsonEncoder.encode(newValue) }
+    }
+
+    var logs: [HabitLog] {
+        get {
+            guard let data = logsData,
+                  let decoded = try? Self.jsonDecoder.decode([HabitLog].self, from: data) else { return [] }
+            return decoded
+        }
+        set { logsData = try? Self.jsonEncoder.encode(newValue) }
+    }
 
     init(
         title: String,
@@ -85,7 +117,7 @@ final class Habit {
         self.isArchived = false
         self.cadence = cadence
         self.type = type
-        self.logs = []
+        self.logsData = nil
         self.timerStart = nil
         self.whyString = whyString
         self.order = order
@@ -149,7 +181,9 @@ extension Habit {
         if let index = completedDates.firstIndex(where: { calendar.isDate($0, inSameDayAs: date) }) {
             completedDates.remove(at: index)
             if calendar.isDateInToday(date) {
-                logs.removeAll { calendar.isDate($0.date, inSameDayAs: date) }
+                var updatedLogs = logs
+                updatedLogs.removeAll { calendar.isDate($0.date, inSameDayAs: date) }
+                logs = updatedLogs
             }
         } else {
             completedDates.append(date)

@@ -26,7 +26,7 @@ enum HabitCadence: Codable, Equatable, Hashable {
 }
 
 /// How a habit is measured and logged.
-/// - `.checkIn`: standard Yes/No — one tap completes the day
+/// - `.checkIn`: standard Yes/No -- one tap completes the day
 /// - `.numeric(target:unit:)`: a measurable daily target, e.g. 64 oz of water.
 ///   Quick-add pills increment the day's accumulated value; when the target
 ///   is reached the day is marked complete.
@@ -49,7 +49,7 @@ enum HabitType: Codable, Equatable, Hashable {
 
 /// A single granular progress entry for `.numeric` and `.duration` habits.
 /// `loggedValue` is a count for numeric habits and elapsed seconds for
-/// duration habits. `checkIn` habits never produce logs — they only flip
+/// duration habits. `checkIn` habits never produce logs -- they only flip
 /// `completedDates`. Stored alongside `completedDates` so the canonical
 /// "done today" flag and streak logic stay untouched.
 struct HabitLog: Codable, Equatable, Hashable, Identifiable {
@@ -66,48 +66,87 @@ struct HabitLog: Codable, Equatable, Hashable, Identifiable {
 
 @Model
 final class Habit {
-    var id: UUID
-    var title: String
-    var createdAt: Date
-    var completedDates: [Date]
-    var colorHex: String
-    var isArchived: Bool
-    /// Scheduling rule for this habit. Defaults to `.daily` so existing
-    /// habits behave exactly as before the cadence feature shipped.
-    var cadence: HabitCadence
-    /// How this habit is measured and logged. Defaults to `.checkIn` so
-    /// existing habits keep their one-tap behavior.
-    var type: HabitType
-    /// Granular progress entries for `.numeric` and `.duration` habits.
-    /// Empty for `.checkIn` habits. Order is chronological append.
-    var logs: [HabitLog]
+    // All stored properties have inline defaults -- CloudKit's SwiftData
+    // integration requires this so the schema can be initialized without
+    // a Swift init call during sync.
+    var id: UUID = UUID()
+    var title: String = ""
+    var createdAt: Date = Date()
+    var completedDates: [Date] = []
+    var colorHex: String = ""
+    var isArchived: Bool = false
+    /// JSON-encoded `HabitCadence`. CloudKit does not support Codable enums
+    /// with associated values as attribute types, so the cadence is serialized
+    /// to `Data` and exposed through the computed `cadence` property.
+    var cadenceData: Data? = nil
+    /// JSON-encoded `HabitType`. Same CloudKit constraint as `cadenceData`.
+    var typeData: Data? = nil
+    /// JSON-encoded `[HabitLog]`. CloudKit does not support arrays of custom
+    /// Codable structs as attribute types.
+    var logsData: Data? = nil
     /// Wall-clock anchor for an actively running `.duration` focus timer.
     /// Non-nil while the timer is running; set to `nil` on pause or completion.
     /// Persisted so elapsed time stays accurate when the app is backgrounded,
-    /// the phone is locked, or the app is killed and relaunched — progress is
+    /// the phone is locked, or the app is killed and relaunched -- progress is
     /// always `Date().timeIntervalSince(timerStart)` plus accumulated `logs`.
-    var timerStart: Date?
-    /// Optional intentionality anchor — a short, user-authored reminder of
+    var timerStart: Date? = nil
+    /// Optional intentionality anchor -- a short, user-authored reminder of
     /// *why* this habit matters, revealed as a reflective moment on the card
     /// right before the user logs progress. nil keeps the resting card clean.
-    var whyString: String?
+    var whyString: String? = nil
     /// Manual ordering for the Today list. Lower values appear first. New
     /// habits are appended after all existing non-archived habits. Only
     /// consulted when the sort mode is `.manual`; other sort modes ignore it.
-    var order: Int
+    var order: Int = 0
     /// Minutes since local midnight (0...1439) for this habit's daily
     /// notification reminder, or nil when no reminder is set. Stored as a
     /// wall-clock offset rather than a `Date` so the reminder always fires at
     /// the same local time regardless of timezone travel or daylight saving.
-    var reminderMinuteOfDay: Int?
+    var reminderMinuteOfDay: Int? = nil
     /// Raw value of the `ReminderSound` this habit's notification plays. nil
     /// resolves to the app's signature chime, so habits created before this
     /// setting existed still sound like Stillhabit rather than a generic alert.
-    var reminderSoundRaw: String?
+    var reminderSoundRaw: String? = nil
     /// Raw value of the `ReminderHaptic` signature this habit's reminder plays.
-    /// nil resolves to the app's breath rhythm, so a habit can be recognized by
+    /// nil resolves to the breath rhythm, so a habit can be recognized by
     /// feel alone even with the ringer off.
-    var reminderHapticRaw: String?
+    var reminderHapticRaw: String? = nil
+
+    // MARK: - CloudKit-compatible typed accessors
+
+    private static let jsonEncoder = JSONEncoder()
+    private static let jsonDecoder = JSONDecoder()
+
+    /// Scheduling rule for this habit, encoded as `cadenceData` for CloudKit.
+    var cadence: HabitCadence {
+        get {
+            guard let data = cadenceData,
+                  let decoded = try? Self.jsonDecoder.decode(HabitCadence.self, from: data) else { return .daily }
+            return decoded
+        }
+        set { cadenceData = try? Self.jsonEncoder.encode(newValue) }
+    }
+
+    /// How this habit is measured and logged, encoded as `typeData` for CloudKit.
+    var type: HabitType {
+        get {
+            guard let data = typeData,
+                  let decoded = try? Self.jsonDecoder.decode(HabitType.self, from: data) else { return .checkIn }
+            return decoded
+        }
+        set { typeData = try? Self.jsonEncoder.encode(newValue) }
+    }
+
+    /// Granular progress entries for `.numeric` and `.duration` habits,
+    /// encoded as `logsData` for CloudKit.
+    var logs: [HabitLog] {
+        get {
+            guard let data = logsData,
+                  let decoded = try? Self.jsonDecoder.decode([HabitLog].self, from: data) else { return [] }
+            return decoded
+        }
+        set { logsData = try? Self.jsonEncoder.encode(newValue) }
+    }
 
     init(
         title: String,
@@ -125,7 +164,7 @@ final class Habit {
         self.isArchived = false
         self.cadence = cadence
         self.type = type
-        self.logs = []
+        self.logsData = nil
         self.timerStart = nil
         self.whyString = whyString?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? whyString?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -179,7 +218,7 @@ extension Habit {
         return whyString?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Number of completions logged so far in the current calendar week (Sunday→Saturday).
+    /// Number of completions logged so far in the current calendar week (Sunday to Saturday).
     func completionsThisWeek(on referenceDate: Date = Date()) -> Int {
         let calendar = Calendar.current
         guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: referenceDate) else { return 0 }
@@ -211,7 +250,9 @@ extension Habit {
         if let index = completedDates.firstIndex(where: { calendar.isDate($0, inSameDayAs: date) }) {
             completedDates.remove(at: index)
             if calendar.isDateInToday(date) {
-                logs.removeAll { calendar.isDate($0.date, inSameDayAs: date) }
+                var updatedLogs = logs
+                updatedLogs.removeAll { calendar.isDate($0.date, inSameDayAs: date) }
+                logs = updatedLogs
             }
         } else {
             completedDates.append(date)
@@ -257,7 +298,7 @@ extension Habit {
 
     /// Completion progress for the given calendar day, clamped to 0...1.
     /// Used by the 90-day heatmap to shade each cell by exact partial progress:
-    /// 0 = faint background, 0.01–0.99 = semi-transparent accent proportional
+    /// 0 = faint background, 0.01-0.99 = semi-transparent accent proportional
     /// to progress, 1.0+ = solid accent. For `.checkIn` habits this is binary;
     /// for `.numeric`/`.duration` it reflects `loggedValue / target`. A day that
     /// is in `completedDates` always reads as fully complete (1.0) so the
@@ -294,14 +335,16 @@ extension Habit {
     /// Appends a granular log entry for today and, if the target is now met,
     /// marks today complete (preserving the exact completion timestamp so
     /// streaks and the heatmap keep working unchanged). Does nothing for
-    /// `.checkIn` habits — those use `toggleCompletion` directly.
+    /// `.checkIn` habits -- those use `toggleCompletion` directly.
     func logProgress(_ value: Double, on date: Date = Date()) {
         guard value != 0 else { return }
         switch type {
         case .checkIn:
             return
         case .numeric, .duration:
-            logs.append(HabitLog(date: date, loggedValue: value))
+            var updatedLogs = logs
+            updatedLogs.append(HabitLog(date: date, loggedValue: value))
+            logs = updatedLogs
             if !isCompleted(on: date), todayProgress >= 1 {
                 completedDates.append(date)
             }
@@ -611,9 +654,9 @@ extension Habit {
     ///
     /// The denominator respects the habit's cadence rather than the raw day
     /// count, so a Mon/Wed/Fri habit isn't quietly punished for its rest days:
-    /// - `.daily` — every day in the window counts.
-    /// - `.specificDays` — only matching weekdays count.
-    /// - `.weeklyTarget(n)` — the expectation is `n` completions per week,
+    /// - `.daily` -- every day in the window counts.
+    /// - `.specificDays` -- only matching weekdays count.
+    /// - `.weeklyTarget(n)` -- the expectation is `n` completions per week,
     ///   pro-rated across the window.
     ///
     /// The window is clipped to the habit's creation date, so a habit that is
@@ -643,7 +686,7 @@ extension Habit {
 
     /// The part of the day this habit is most often completed in, inferred
     /// from the hour of each completion timestamp in the trailing window.
-    /// Returns `nil` until there are at least `minimumSamples` completions —
+    /// Returns `nil` until there are at least `minimumSamples` completions --
     /// an observation, never a guess.
     func timeOfDayPattern(for lastNDays: Int = 30, minimumSamples: Int = 3) -> TimeOfDayPattern? {
         let calendar = Calendar.current
@@ -699,7 +742,7 @@ enum ValueFormatter {
     }
 
     /// Formats an elapsed-seconds value as `m:ss` (e.g. 1198 -> "19:58").
-    /// Hours are not promoted — focus targets are 1–120 minutes.
+    /// Hours are not promoted -- focus targets are 1-120 minutes.
     static func clockString(seconds: Int) -> String {
         let clamped = max(0, seconds)
         let minutes = clamped / 60

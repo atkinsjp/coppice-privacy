@@ -54,6 +54,7 @@ struct SettingsView: View {
                 orderSection
                 ambientSection
                 subscriptionSection
+                syncSection
                 supportSection
                 eraseSection
 
@@ -358,6 +359,39 @@ struct SettingsView: View {
         return "Free — three habits"
     }
 
+    // MARK: - Sync
+
+    private var syncSection: some View {
+        settingsGroup("ICLOUD SYNC") {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(SharedStore.isCloudKitEnabled ? DesignSystem.Colors.sage : DesignSystem.Colors.textSecondary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+
+                Text(syncStatusLine)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Spacer(minLength: 0)
+            }
+
+            Text(syncFootnote)
+                .font(.system(size: 12))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+    }
+
+    private var syncStatusLine: String {
+        SharedStore.isCloudKitEnabled ? "Synced to iCloud" : "On this device only"
+    }
+
+    private var syncFootnote: String {
+        if SharedStore.isCloudKitEnabled {
+            return "Your habits sync across your devices through your iCloud account. Changes appear within a few moments."
+        }
+        return "Sign in to iCloud on this device to sync your habits across your iPhone and iPad."
+    }
+
     // MARK: - Support
 
     private var supportSection: some View {
@@ -396,7 +430,7 @@ struct SettingsView: View {
             .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.terracotta))
             .accessibilityHint("Asks for confirmation before permanently deleting everything")
 
-            Text("Stillhabit keeps everything on this device — there is no account to close.")
+            Text("Erasing also removes synced data from iCloud on this device. It cannot be undone.")
                 .font(.system(size: 12))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .padding(.horizontal, 4)
