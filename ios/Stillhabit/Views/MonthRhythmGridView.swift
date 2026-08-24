@@ -3,7 +3,8 @@
 //  Stillhabit
 //
 //  A compact, week-aligned 30-day grid — the habit's short-term rhythm at a
-//  glance. Read-only by design: the 90-day map below remains the editable one.
+//  glance. Days are tappable and toggle completion, mirroring the 90-day map
+//  below so both grids behave as one continuous editing surface.
 //
 
 import SwiftUI
@@ -11,6 +12,9 @@ import SwiftUI
 struct MonthRhythmGridView: View {
     let habit: Habit
     let accent: Color
+    /// Toggles completion for the tapped day. Owned by the detail view, which
+    /// persists the change, refreshes streaks, and notifies widgets.
+    let onToggleDay: (Date) -> Void
 
     @State private var hasAppeared: Bool = false
 
@@ -137,29 +141,37 @@ struct MonthRhythmGridView: View {
         let isDone = progress >= 1
         let isToday = calendar.isDateInToday(date)
 
-        return RoundedRectangle(cornerRadius: 5, style: .continuous)
-            .fill(isDone ? accent : accent.opacity(fillOpacity(for: progress)))
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                if isToday {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(
-                            isDone ? DesignSystem.Colors.onAccent.opacity(0.6) : accent.opacity(0.7),
-                            lineWidth: 1.5
-                        )
+        return Button {
+            onToggleDay(date)
+        } label: {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(isDone ? accent : accent.opacity(fillOpacity(for: progress)))
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    if isToday {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(
+                                isDone ? DesignSystem.Colors.onAccent.opacity(0.6) : accent.opacity(0.7),
+                                lineWidth: 1.5
+                            )
+                    }
                 }
-            }
-            .opacity(hasAppeared ? 1 : 0)
-            .scaleEffect(hasAppeared ? 1 : 0.65)
-            .animation(
-                .spring(response: 0.45, dampingFraction: 0.78)
-                    .delay(Double(index) * 0.012),
-                value: hasAppeared
-            )
-            .animation(.easeOut(duration: 0.25), value: progress)
-            .accessibilityElement()
-            .accessibilityLabel(date.formatted(.dateTime.month(.wide).day()))
-            .accessibilityValue(accessibilityValue(progress: progress))
+        }
+        // Thirty cells, so the featherweight press style is used instead of
+        // the full ripple — same rationale as the 90-day map.
+        .buttonStyle(.stillQuietPress)
+        .opacity(hasAppeared ? 1 : 0)
+        .scaleEffect(hasAppeared ? 1 : 0.65)
+        .animation(
+            .spring(response: 0.45, dampingFraction: 0.78)
+                .delay(Double(index) * 0.012),
+            value: hasAppeared
+        )
+        .animation(.easeOut(duration: 0.25), value: progress)
+        .accessibilityElement()
+        .accessibilityLabel(date.formatted(.dateTime.month(.wide).day()))
+        .accessibilityValue(accessibilityValue(progress: progress))
+        .accessibilityHint("Double tap to toggle")
     }
 
     /// Maps a 0...1 completion fraction to a cell's accent opacity, matching
@@ -180,7 +192,8 @@ struct MonthRhythmGridView: View {
 #Preview {
     MonthRhythmGridView(
         habit: Habit(title: "Morning stretch", colorHex: "C8826D"),
-        accent: DesignSystem.Colors.terracotta
+        accent: DesignSystem.Colors.terracotta,
+        onToggleDay: { _ in }
     )
     .padding(24)
     .background(DesignSystem.Colors.background)

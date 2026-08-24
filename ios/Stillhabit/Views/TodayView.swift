@@ -43,8 +43,8 @@ struct TodayView: View {
         let completedCount: Int
         let progress: Double
         let allComplete: Bool
-        /// Per-day overall completion ratio for the trailing 7 days, oldest
-        /// first (today last).
+        /// Per-day overall completion ratio for the current calendar week,
+        /// oldest first (future days of the week are 0).
         let weekRatios: [Double]
     }
 
@@ -78,8 +78,9 @@ struct TodayView: View {
         let total = sorted.count
 
         let today = calendar.startOfDay(for: now)
-        let weekRatios: [Double] = (0..<7).reversed().map { offset in
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
+        let weekRatios: [Double] = weekDates.map { day in
+            // Days later in the week than today have no history yet.
+            guard calendar.compare(day, to: today, toGranularity: .day) != .orderedDescending else { return 0 }
             var scheduled = 0
             var done = 0
             for habit in live where habit.isScheduled(on: day) {
@@ -150,16 +151,26 @@ struct TodayView: View {
         Date().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased()
     }
 
-    /// Short single-letter weekday initials for the trailing 7 days, oldest
-    /// first (today last). Uses the locale's very short weekday symbols.
-    private var weekDayInitials: [String] {
+    /// The 7 days of the current calendar week, oldest first, anchored at the
+    /// locale's first weekday (Sunday in the US, Monday in most of Europe) so
+    /// the strip reads in calendar order rather than as a trailing window.
+    private var weekDates: [Date] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
+        let weekday = calendar.component(.weekday, from: today)
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        return (0..<7).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset - leading, to: today)
+        }
+    }
+
+    /// Short single-letter weekday initials for the current calendar week,
+    /// oldest first. Uses the locale's very short weekday symbols.
+    private var weekDayInitials: [String] {
+        let calendar = Calendar.current
         let symbols = calendar.veryShortWeekdaySymbols
-        return (0..<7).reversed().map { offset in
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return "" }
-            let index = calendar.component(.weekday, from: day) - 1
-            return symbols[index]
+        return weekDates.map { day in
+            symbols[calendar.component(.weekday, from: day) - 1]
         }
     }
 
@@ -385,8 +396,8 @@ struct TodayView: View {
 
     // MARK: - 7-day dot calendar
 
-    /// A small, calm row of 7 dots — one per trailing day, oldest first (today
-    /// last). Each dot fills proportionally to that day's overall completion
+    /// A small, calm row of 7 dots — one per day of the current calendar week,
+    /// oldest first. Each dot fills proportionally to that day's overall completion
     /// ratio across all scheduled habits, so a glance reveals the week's
     /// rhythm of consistency. Today's dot carries a thin sage ring so the
     /// current day is quietly anchored. Empty days (no scheduled habits) sit as
@@ -403,15 +414,16 @@ struct TodayView: View {
 
     private func weekDotRow(ratios: [Double]) -> some View {
         let initials = weekDayInitials
-        let todayIndex = ratios.count - 1
+        let todayIndex = weekDates.firstIndex { Calendar.current.isDateInToday($0) } ?? ratios.count - 1
 
         return HStack(spacing: 10) {
             ForEach(Array(ratios.enumerated()), id: \.offset) { index, ratio in
+                let isFuture = index > todayIndex
                 VStack(spacing: 5) {
                     Text(initials[index])
                         .font(.system(size: 10, weight: index == todayIndex ? .heavy : .semibold))
                         .foregroundStyle(DesignSystem.Colors.textStrong)
-                        .opacity(index == todayIndex ? 1 : 0.9)
+                        .opacity(index == todayIndex ? 1 : (isFuture ? 0.45 : 0.9))
 
                     ZStack {
                         if ratio >= 1 {
@@ -424,7 +436,10 @@ struct TodayView: View {
                                 .frame(width: 14, height: 14)
                         } else {
                             Circle()
-                                .stroke(DesignSystem.Colors.textSecondary.opacity(0.2), lineWidth: 1)
+                                .stroke(
+                                    DesignSystem.Colors.textSecondary.opacity(isFuture ? 0.12 : 0.2),
+                                    lineWidth: 1
+                                )
                                 .frame(width: 14, height: 14)
                         }
 
@@ -441,7 +456,7 @@ struct TodayView: View {
                     )
                 }
                 .accessibilityElement()
-                .accessibilityLabel(dotAccessibilityLabel(index: index, ratio: ratio, initials: initials))
+                .accessibilityLabel(dotAccessibilityLabel(index: index, ratio: ratio, initials: initials, isFuture: index > todayIndex))
             }
 
             Spacer(minLength: 4)
@@ -458,8 +473,9 @@ struct TodayView: View {
     }
 
     /// VoiceOver label for a single day dot in the 7-day calendar.
-    private func dotAccessibilityLabel(index: Int, ratio: Double, initials: [String]) -> String {
+    private func dotAccessibilityLabel(index: Int, ratio: Double, initials: [String], isFuture: Bool) -> String {
         let dayName = initials[index]
+        if isFuture { return "\(dayName) — upcoming" }
         if ratio >= 1 { return "\(dayName) — all habits complete" }
         if ratio > 0 {
             let pct = Int(ratio * 100)

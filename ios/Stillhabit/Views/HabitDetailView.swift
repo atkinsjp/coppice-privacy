@@ -83,7 +83,7 @@ struct HabitDetailView: View {
                 VStack(alignment: .leading, spacing: 36) {
                     header
 
-                    MonthRhythmGridView(habit: habit, accent: accent)
+                    MonthRhythmGridView(habit: habit, accent: accent, onToggleDay: toggleDay)
 
                     heatmap
 
