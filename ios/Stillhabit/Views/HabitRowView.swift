@@ -256,6 +256,30 @@ struct HabitRowView: View {
 
     // MARK: - Card
 
+    /// The inner card content, extracted so the outer HStack type-checks
+    /// quickly instead of trying to resolve the whole nested builder at once.
+    private var cardBody: some View {
+        VStack(alignment: .leading, spacing: cardSpacing) {
+            HStack(spacing: 0) {
+                leadingContent
+                Spacer(minLength: 12)
+                trailingControl
+            }
+
+            if isWhyRevealed, let whyText = habit.whyAnchorText {
+                whyAnchorView(whyText)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if isTimerExpanded, case .duration = habitType {
+                countdownClock
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var card: some View {
         // Computed once per body evaluation and threaded through everything
         // that needs it, rather than re-derived per subview.
@@ -267,25 +291,7 @@ struct HabitRowView: View {
                     .padding(.leading, 8)
             }
 
-            VStack(alignment: .leading, spacing: cardSpacing) {
-                HStack(spacing: 0) {
-                    leadingContent
-                    Spacer(minLength: 12)
-                    trailingControl
-                }
-
-                if isWhyRevealed, let whyText = habit.whyAnchorText {
-                    whyAnchorView(whyText)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                if isTimerExpanded, case .duration = habitType {
-                    countdownClock
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 22)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            cardBody
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topTrailing) {
