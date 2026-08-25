@@ -281,11 +281,12 @@ struct HabitRowView: View {
     }
 
     private var card: some View {
-        // Computed once per body evaluation and threaded through everything
-        // that needs it, rather than re-derived per subview.
-        let streak = habit.isAlive ? habit.currentStreak : 0
+        cardAccessibility
+    }
 
-        return HStack(spacing: 0) {
+    /// The layout stack: optional drag handle beside the card body.
+    private var cardStack: some View {
+        HStack(spacing: 0) {
             if allowsDragReorder, !isEditing {
                 dragHandle
                     .padding(.leading, 8)
@@ -294,55 +295,81 @@ struct HabitRowView: View {
             cardBody
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topTrailing) {
-            if let label = streakLabel(streak) {
-                streakBadge(label, isLong: isLongStreak(streak))
+    }
+
+    /// Fill, streak badge, border pulse, and the rounded card surface.
+    private var cardSurface: some View {
+        let streak = habit.isAlive ? habit.currentStreak : 0
+        return cardStack
+            .overlay(alignment: .topTrailing) {
+                if let label = streakLabel(streak) {
+                    streakBadge(label, isLong: isLongStreak(streak))
+                }
             }
+            .background(cardBackground)
+            .overlay { borderPulseOverlay }
+            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
+            .softShadow()
+            .tactileWave(accent: accent, trigger: waveTick)
+    }
+
+    /// Press and drag-reorder transforms, plus the completed-card dim.
+    private var cardMotion: some View {
+        cardSurface
+            .scaleEffect(isReordering ? 1.03 : (isPressing ? 0.97 : 1))
+            .offset(x: currentOffset)
+            .offset(y: reorderOffset)
+            .zIndex(isReordering ? 100 : 0)
+            .shadow(color: isReordering ? Color.black.opacity(0.12) : .clear, radius: isReordering ? 20 : 0)
+            // Completed cards gently dim so incomplete habits stay the visual focus.
+            // The accent fill remains, but the whole card recedes to ~58% opacity —
+            // enough to signal "done, move on" without hiding the streak or checkmark.
+            .opacity(isEffectivelyDone ? 0.58 : 1)
+    }
+
+    private var cardAnimated: some View {
+        cardMotion
+            .animation(cardSpring, value: isEffectivelyDone)
+            .animation(cardSpring, value: isTimerExpanded)
+            .animation(cardSpring, value: habit.todayProgress)
+            .animation(.easeInOut(duration: 0.4), value: isWhyRevealed)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isReordering)
+    }
+
+    private var cardInteractive: some View {
+        cardAnimated
+            .contentShape(.rect)
+            .onTapGesture { handleCardTap() }
+            .modifier(CompletionLongPressModifier(
+                isEnabled: habitType.isCheckIn && !isEditing && !isReordering,
+                isPressing: $isPressing,
+                onComplete: { toggle() }
+            ))
+            .simultaneousGesture(drag)
+    }
+
+    private var cardAccessibility: some View {
+        let streak = habit.isAlive ? habit.currentStreak : 0
+        return cardInteractive
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(habit.title)
+            .accessibilityValue(accessibilityValueText(streak: streak))
+            .accessibilityAction(named: "Open details") { onOpen() }
+            .accessibilityAction(named: isDoneToday ? "Mark incomplete" : "Mark complete") { toggle() }
+            .accessibilityAction(named: "Edit name and goal") { beginEditing() }
+            .accessibilityAction(named: "Let it rest") { onRest() }
+            .accessibilityAction(named: "Delete") { onDelete() }
+            .accessibilityAction(named: "Move up") { onReorder(listIndex, max(0, listIndex - 1)) }
+            .accessibilityAction(named: "Move down") { onReorder(listIndex, listIndex + 1) }
+    }
+
+    private func handleCardTap() {
+        if isRevealed {
+            withAnimation(cardSpring) { isRevealed = false }
+        } else if !isReordering {
+            waveTick += 1
+            onOpen()
         }
-        .background(cardBackground)
-        .overlay { borderPulseOverlay }
-        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cardCornerRadius))
-        .softShadow()
-        .tactileWave(accent: accent, trigger: waveTick)
-        .scaleEffect(isReordering ? 1.03 : (isPressing ? 0.97 : 1))
-        .offset(x: currentOffset)
-        .offset(y: reorderOffset)
-        .zIndex(isReordering ? 100 : 0)
-        .shadow(color: isReordering ? Color.black.opacity(0.12) : .clear, radius: isReordering ? 20 : 0)
-        // Completed cards gently dim so incomplete habits stay the visual focus.
-        // The accent fill remains, but the whole card recedes to ~58% opacity —
-        // enough to signal "done, move on" without hiding the streak or checkmark.
-        .opacity(isEffectivelyDone ? 0.58 : 1)
-        .animation(cardSpring, value: isEffectivelyDone)
-        .animation(cardSpring, value: isTimerExpanded)
-        .animation(cardSpring, value: habit.todayProgress)
-        .animation(.easeInOut(duration: 0.4), value: isWhyRevealed)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isReordering)
-        .contentShape(.rect)
-        .onTapGesture {
-            if isRevealed {
-                withAnimation(cardSpring) { isRevealed = false }
-            } else if !isReordering {
-                waveTick += 1
-                onOpen()
-            }
-        }
-        .modifier(CompletionLongPressModifier(
-            isEnabled: habitType.isCheckIn && !isEditing && !isReordering,
-            isPressing: $isPressing,
-            onComplete: { toggle() }
-        ))
-        .simultaneousGesture(drag)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(habit.title)
-        .accessibilityValue(accessibilityValueText(streak: streak))
-        .accessibilityAction(named: "Open details") { onOpen() }
-        .accessibilityAction(named: isDoneToday ? "Mark incomplete" : "Mark complete") { toggle() }
-        .accessibilityAction(named: "Edit name and goal") { beginEditing() }
-        .accessibilityAction(named: "Let it rest") { onRest() }
-        .accessibilityAction(named: "Delete") { onDelete() }
-        .accessibilityAction(named: "Move up") { onReorder(listIndex, max(0, listIndex - 1)) }
-        .accessibilityAction(named: "Move down") { onReorder(listIndex, listIndex + 1) }
     }
 
     // MARK: - Streak badge
