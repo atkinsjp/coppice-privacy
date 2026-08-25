@@ -41,11 +41,11 @@ struct PaywallView: View {
     // MARK: - Pricing
 
     private var monthlyPrice: String {
-        store.monthlyPackage?.storeProduct.localizedPriceString ?? "$2.99"
+        store.monthlyPackage?.storeProduct.localizedPriceString ?? "$4.99"
     }
 
     private var yearlyPrice: String {
-        store.yearlyPackage?.storeProduct.localizedPriceString ?? "$14.99"
+        store.yearlyPackage?.storeProduct.localizedPriceString ?? "$29.99"
     }
 
     private var selectedPackage: Package? {
@@ -53,11 +53,11 @@ struct PaywallView: View {
     }
 
     /// How much the annual plan saves against twelve monthly charges. Derived
-    /// from live StoreKit prices when offerings have loaded, with the shipped
-    /// $2.99 / $14.99 pair as the fallback so the pill never reads as empty.
+    /// from live StoreKit prices when offerings have loaded, with the
+    /// $4.99 / $29.99 fallback so the pill never reads as empty.
     private var savingsLabel: String? {
-        let monthly = store.monthlyPackage?.storeProduct.price ?? Decimal(2.99)
-        let yearly = store.yearlyPackage?.storeProduct.price ?? Decimal(14.99)
+        let monthly = store.monthlyPackage?.storeProduct.price ?? Decimal(4.99)
+        let yearly = store.yearlyPackage?.storeProduct.price ?? Decimal(29.99)
         let twelveMonths = monthly * 12
         guard twelveMonths > 0, twelveMonths > yearly else { return nil }
         let ratio = (twelveMonths - yearly) / twelveMonths
