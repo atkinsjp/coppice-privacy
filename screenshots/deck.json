@@ -1,0 +1,47 @@
+{
+  "theme": {
+    "style": "A magazine-like world of warm cream paper tones, muted sage greens, and dusty terracotta, evoking a slow morning ritual rather than a productivity dashboard. Light is soft and diffused like early daylight through linen curtains, with subtle paper-grain textures and gentle organic gradients instead of sharp digital shine. Compositions stay uncluttered and airy, echoing the app's anti-gamification calm, with occasional deep dusk tones for moments of stillness and completion.",
+    "headlineFont": "'Fraunces', serif — import via @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&display=swap')",
+    "headlineFontSize": 118,
+    "mockupIds": {
+      "iphone": "silver",
+      "ipad": "silver"
+    },
+    "palette": {
+      "primary": "#F4ECDD",
+      "secondary": "#8A9A7E",
+      "accent": "#C1633D"
+    },
+    "layoutId": "sandwich"
+  },
+  "slides": [
+    {
+      "label": "Add Habit Sheet",
+      "backgroundPrompt": "Abstract editorial-style background with soft layered paper textures in warm cream and pale linen, gently curved organic shapes drifting like folded parchment, a single muted sage ribbon curling diagonally through the frame. Warm diffused daylight falls from the upper left, casting soft shadows and subtle grain across the surface, with the upper 30% kept calm and nearly flat for text clarity. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/189729aa-c15a-45b1-9c34-af1322d4b59e.png"
+    },
+    {
+      "label": "Today List",
+      "backgroundPrompt": "Airy abstract composition on a warm cream backdrop with soft floating rectangles in muted sage and pale terracotta, arranged loosely like scattered index cards catching gentle light. Soft diffused lighting from directly above creates minimal shadows, giving an open, breathable feel with fine paper-grain texture throughout, the top portion left quiet and uncluttered. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/d9aa0834-8212-42b3-8545-b1655f8b1809.png"
+    },
+    {
+      "label": "Completed Day",
+      "backgroundPrompt": "Deep warm dusk-toned abstract scene with a soft glowing orb of dimmed terracotta light pooling low in the frame, surrounded by hazy sage-green atmospheric mist. Cinematic soft glow radiates outward with fine particle sparkle suspended in the air, deep shadows framing the edges for a serene, ceremonial mood, upper region darker and calm for text overlay. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/92b9d44c-43d2-4671-9029-9c6c56c69a37.png"
+    },
+    {
+      "label": "Habit Detail",
+      "backgroundPrompt": "Warm parchment-toned abstract background with a faint grid of soft rounded squares in varying tones of sage and terracotta, resembling an archival calendar texture without any text or numerals. Gentle side lighting rakes across the grid creating subtle depth and soft shadow lines, fine linen grain overlays the whole scene, the top area fading into a smoother, calmer cream tone. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/63725c0a-e5db-4d59-a567-598583f7d194.png"
+    }
+  ],
+  "headlines": {
+    "en": {
+      "Add Habit Sheet": "Start Small",
+      "Today List": "One Calm List",
+      "Completed Day": "A Day, Kept",
+      "Habit Detail": "Watch It<br>Take Shape"
+    }
+  }
+}
