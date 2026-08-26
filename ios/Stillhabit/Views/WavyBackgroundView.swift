@@ -53,25 +53,30 @@ struct WavyBackgroundView: View {
     @State private var isDrifting = false
 
     var body: some View {
-        ZStack {
-            baseColor
-
-            ForEach(blobs) { blob in
-                blobLayer(blob)
+        // The base color is the layout anchor: it accepts whatever size the
+        // parent proposes. The blobs are painted in an overlay so their large
+        // fixed frames (up to 600pt) never inflate this view's layout size —
+        // as ZStack children they once did, which made containing views
+        // (like the paywall) wider than the screen and clipped their content
+        // on both edges.
+        baseColor
+            .overlay {
+                ForEach(blobs) { blob in
+                    blobLayer(blob)
+                }
             }
-        }
-        .ignoresSafeArea()
-        .overlay {
-            if warmGlow {
-                WarmGlowPulse(reduceMotion: reduceMotion)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+            .overlay {
+                if warmGlow {
+                    WarmGlowPulse(reduceMotion: reduceMotion)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
             }
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            isDrifting = true
-        }
+            .ignoresSafeArea()
+            .onAppear {
+                guard !reduceMotion else { return }
+                isDrifting = true
+            }
     }
 
     // MARK: - Layers
