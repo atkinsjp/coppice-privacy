@@ -6,7 +6,8 @@
       "path": "ios",
       "framework": "swift",
       "settings": {
-        "iosBundleId": "com.atkinsmedia.stillhabit"
+        "iosBundleId": "com.atkinsmedia.stillhabit",
+        "displayName": "StillHabit: Calm Habit Tracker"
       }
     }
   ]
