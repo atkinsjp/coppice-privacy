@@ -14,6 +14,8 @@ struct StillHabitCalmHabitTrackerApp: App {
     @State private var store: StoreViewModel
     /// The Apple identity anchor for this install (Sign in with Apple).
     @State private var account = AccountService()
+    /// Optional Face ID privacy curtain over all app content.
+    @State private var appLock = AppLockService()
 
     /// The user's theme override. Applied once here at the window root so
     /// every sheet inherits it too.
@@ -50,14 +52,26 @@ struct StillHabitCalmHabitTrackerApp: App {
             ContentView()
                 .environment(store)
                 .environment(account)
+                .environment(appLock)
                 .preferredColorScheme(appearance.colorScheme)
                 // Apple recommends re-checking the stored SIWA credential
                 // whenever the app becomes active — this catches OS-level
                 // revocations mid-session without holding a notification
                 // observer open.
+                .overlay {
+                    LockScreenView(appLock: appLock)
+                }
+                // Background engages the privacy curtain (when enabled);
+                // returning to the foreground re-validates the Apple sign-in.
                 .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active else { return }
-                    Task { await account.refreshCredentialState() }
+                    switch phase {
+                    case .background:
+                        appLock.lockIfNeeded()
+                    case .active:
+                        Task { await account.refreshCredentialState() }
+                    default:
+                        break
+                    }
                 }
         }
         .modelContainer(container)

@@ -23,6 +23,7 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(StoreViewModel.self) private var store
     @Environment(AccountService.self) private var account
+    @Environment(AppLockService.self) private var appLock
     @Environment(\.colorScheme) private var colorScheme
 
     /// Theme override. Read here and applied at the window root.
@@ -31,6 +32,9 @@ struct SettingsView: View {
     @AppStorage("stillhabit.sortMode") private var sortModeRaw: String = HabitSortMode.manual.rawValue
 
     @State private var isConfirmingErase = false
+    /// Shown when Face ID lock can't be enabled because the device offers
+    /// neither biometrics nor a passcode.
+    @State private var isLockUnavailableShown = false
     /// Set after a successful erase so the confirmation reads as an outcome
     /// rather than leaving the user wondering whether anything happened.
     @State private var didErase = false
@@ -59,6 +63,7 @@ struct SettingsView: View {
                 subscriptionSection
                 accountSection
                 syncSection
+                privacySection
                 supportSection
                 eraseSection
 
@@ -451,6 +456,58 @@ struct SettingsView: View {
             return "Your habits sync across your devices through your iCloud account. Changes appear within a few moments."
         }
         return "Sign in to iCloud on this device to sync your habits across your iPhone and iPad."
+    }
+
+    // MARK: - Privacy
+
+    /// Optional Face ID lock. Habits stay on-device regardless — this only
+    /// hides them from whoever picks up the phone next.
+    private var privacySection: some View {
+        settingsGroup("PRIVACY") {
+            HStack(spacing: 12) {
+                Image(systemName: "faceid")
+                    .font(.system(size: 17))
+                    .foregroundStyle(DesignSystem.Colors.sage)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Face ID Lock")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(appLock.isLockEnabled ? "On — habits hide when you leave the app" : "Off")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .animation(.easeInOut(duration: 0.2), value: appLock.isLockEnabled)
+                }
+
+                Spacer(minLength: 0)
+
+                Toggle("", isOn: Binding(
+                    get: { appLock.isLockEnabled },
+                    set: { newValue in
+                        guard newValue != appLock.isLockEnabled else { return }
+                        Task {
+                            let confirmed = await appLock.setLockEnabled(newValue)
+                            if !confirmed {
+                                isLockUnavailableShown = true
+                            }
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .tint(DesignSystem.Colors.sage)
+            }
+            .accessibilityElement(children: .combine)
+
+            Text("When on, leaving Stillhabit hides every habit behind a quiet screen until your face (or device passcode) unlocks it.")
+                .font(.system(size: 12))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+        .alert("Face ID unavailable", isPresented: $isLockUnavailableShown) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This device has no biometric unlock or passcode set up, so the lock can't be turned on.")
+        }
     }
 
     // MARK: - Support
