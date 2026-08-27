@@ -12,10 +12,14 @@ import RevenueCat
 struct StillhabitApp: App {
     private let container: ModelContainer = SharedStore.makeContainer()
     @State private var store: StoreViewModel
+    /// The Apple identity anchor for this install (Sign in with Apple).
+    @State private var account = AccountService()
 
     /// The user's theme override. Applied once here at the window root so
     /// every sheet inherits it too.
     @AppStorage(AppearanceMode.storageKey) private var appearanceRaw: String = AppearanceMode.system.rawValue
+    /// Drives periodic Sign in with Apple credential re-validation.
+    @Environment(\.scenePhase) private var scenePhase
 
     private var appearance: AppearanceMode {
         AppearanceMode(rawValue: appearanceRaw) ?? .system
@@ -45,7 +49,16 @@ struct StillhabitApp: App {
         WindowGroup {
             ContentView()
                 .environment(store)
+                .environment(account)
                 .preferredColorScheme(appearance.colorScheme)
+                // Apple recommends re-checking the stored SIWA credential
+                // whenever the app becomes active — this catches OS-level
+                // revocations mid-session without holding a notification
+                // observer open.
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active else { return }
+                    Task { await account.refreshCredentialState() }
+                }
         }
         .modelContainer(container)
     }

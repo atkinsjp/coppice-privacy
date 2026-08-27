@@ -12,6 +12,7 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import AuthenticationServices
 
 struct SettingsView: View {
     /// The Today view's ambient player, so soundscape changes are heard live.
@@ -21,6 +22,8 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(StoreViewModel.self) private var store
+    @Environment(AccountService.self) private var account
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Theme override. Read here and applied at the window root.
     @AppStorage(AppearanceMode.storageKey) private var appearanceRaw: String = AppearanceMode.system.rawValue
@@ -54,6 +57,7 @@ struct SettingsView: View {
                 orderSection
                 ambientSection
                 subscriptionSection
+                accountSection
                 syncSection
                 supportSection
                 eraseSection
@@ -357,6 +361,63 @@ struct SettingsView: View {
         if store.isPremium { return "Stillhabit Pro — active" }
         if GracePeriod.isActive { return "Everything unlocked for now" }
         return "Free — three habits"
+    }
+
+    // MARK: - Account
+
+    /// Sign in with Apple — the app's one identity anchor. Signing in keeps a
+    /// stable Apple identifier so future Pro restoration and trial tracking
+    /// can resolve to the same person across reinstalls.
+    private var accountSection: some View {
+        settingsGroup("ACCOUNT") {
+            if account.isSignedIn {
+                signedInRow
+                Divider().overlay(DesignSystem.Colors.textSecondary.opacity(0.15))
+                actionRow(title: "Sign Out", icon: "rectangle.portrait.and.arrow.right") {
+                    account.signOut()
+                }
+                Text("Signing out removes Apple sign-in from Stillhabit on this device only.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                SignInWithAppleButton(.signIn) { request in
+                    account.makeRequest(request)
+                } onCompletion: { result in
+                    account.handleAuthorization(result)
+                }
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                .frame(height: 48)
+                .clipShape(.rect(cornerRadius: DesignSystem.Layout.fieldCornerRadius))
+
+                Text("Keeps your access with you if you reinstall or switch devices, without an email or password.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var signedInRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(DesignSystem.Colors.sage)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(account.displayName)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                if let email = account.email, email != account.displayName {
+                    Text(email)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Sync
