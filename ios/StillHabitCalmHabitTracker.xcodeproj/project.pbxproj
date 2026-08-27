@@ -659,7 +659,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				CODE_SIGN_ENTITLEMENTS = StillHabitCalmHabitTrackerWidget/StillHabitCalmHabitTrackerWidget.entitlements;
+				CODE_SIGN_ENTITLEMENTS = StillhabitWidget/StillhabitWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				MARKETING_VERSION = 1.0.0;
@@ -683,7 +683,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				CODE_SIGN_ENTITLEMENTS = StillHabitCalmHabitTrackerWidget/StillHabitCalmHabitTrackerWidget.entitlements;
+				CODE_SIGN_ENTITLEMENTS = StillhabitWidget/StillhabitWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				MARKETING_VERSION = 1.0.0;
