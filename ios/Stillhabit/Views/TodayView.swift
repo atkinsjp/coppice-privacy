@@ -119,6 +119,9 @@ struct TodayView: View {
     @State private var ambientPlayer = AmbientSoundPlayer()
     /// Current sort mode for the Today list. Persists across launches.
     @AppStorage("stillhabit.sortMode") private var sortModeRaw: String = HabitSortMode.manual.rawValue
+    /// Set automatically once the user swipes a card left for the first time
+    /// (written by `HabitRowView`); retires the swipe-actions hint line.
+    @AppStorage(HintFlags.learnedSwipeActions) private var didLearnSwipeActions = false
     /// The sort mode resolved from the persisted raw value.
     private var sortMode: HabitSortMode {
         HabitSortMode(rawValue: sortModeRaw) ?? .manual
@@ -186,6 +189,10 @@ struct TodayView: View {
                 } else {
                     progressSection(completed: snapshot.completedCount, total: snapshot.habits.count, progress: snapshot.progress)
 
+                    if !didLearnSwipeActions {
+                        swipeEducationHint
+                    }
+
                     LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
                         ForEach(Array(snapshot.habits.enumerated()), id: \.element.id) { index, habit in
                             HabitRowView(
@@ -219,6 +226,7 @@ struct TodayView: View {
             .padding(.top, 18)
             .padding(.bottom, 96)
         }
+        .animation(.easeInOut(duration: 0.35), value: didLearnSwipeActions)
         .scrollDisabled(isStillMomentActive)
         .background {
             // The backdrop's drift is a render-server animation now, not a
@@ -505,6 +513,24 @@ struct TodayView: View {
         .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
         .accessibilityLabel("Settings")
         .accessibilityHint("Appearance, order, ambient sound, and subscription")
+    }
+
+    // MARK: - Swipe education
+
+    /// A small, quiet line above the habit list teaching the left-swipe.
+    /// Disappears forever the first time the user reveals a card's actions —
+    /// `HabitRowView` writes the flag when the reveal springs open.
+    private var swipeEducationHint: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "arrow.left.to.line")
+                .font(.system(size: 11, weight: .medium))
+            Text("Slide a habit left to edit, rest, or delete")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary.opacity(0.75))
+        .frame(maxWidth: .infinity)
+        .transition(.opacity)
+        .accessibilityHint("Swipe left on a habit to edit it, let it rest, or delete it")
     }
 
     // MARK: - Rest & delete

@@ -117,8 +117,9 @@ struct HabitRowView: View {
     /// Distance the card must travel rightward to count as a completion swipe.
     private let completionThreshold: CGFloat = 88
     /// Width of the hidden trailing action area. Grew from 112 to 168 when
-    /// the Edit action joined Rest and Delete behind the swipe-left gesture.
-    private let actionsWidth: CGFloat = 168
+    /// the Edit action joined Rest and Delete behind the swipe-left gesture,
+    /// then to 184 to fit the labeled icon-and-caption buttons.
+    private let actionsWidth: CGFloat = 184
 
     private var accent: Color { DesignSystem.habitColor(forHex: habit.colorHex) }
     private var isDoneToday: Bool { habit.isCompleted(on: Date()) }
@@ -876,6 +877,7 @@ struct HabitRowView: View {
             Spacer()
         }
         .padding(.leading, 26)
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 
@@ -885,49 +887,68 @@ struct HabitRowView: View {
 
     // MARK: - Hidden quiet actions
 
+    /// The revealed edit / rest / delete controls. Each is an explicitly
+    /// labeled chip — icon over a short word — so it visibly reads as a
+    /// tappable control rather than a floating glyph. Bare icons at the
+    /// screen edge read as decorative, which made the actions feel inert.
     private var quickActions: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Spacer()
 
-            Button {
+            quickActionButton(
+                icon: "pencil",
+                title: "Edit",
+                tint: DesignSystem.Colors.slateBlue
+            ) {
                 withAnimation(cardSpring) { isRevealed = false }
                 beginEditing()
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.slateBlue)
-                    .frame(width: 44, height: 44)
             }
-            .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.slateBlue))
-            .accessibilityLabel("Edit \(habit.title)")
 
-            Button {
+            quickActionButton(
+                icon: "moon.zzz",
+                title: "Rest",
+                tint: DesignSystem.Colors.textSecondary
+            ) {
                 withAnimation(cardSpring) { isRevealed = false }
                 onRest()
-            } label: {
-                Image(systemName: "moon.zzz")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .frame(width: 44, height: 44)
             }
-            .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.textSecondary))
-            .accessibilityLabel("Let \(habit.title) rest")
 
-            Button {
+            quickActionButton(
+                icon: "trash",
+                title: "Delete",
+                tint: DesignSystem.Colors.terracotta
+            ) {
                 withAnimation(cardSpring) { isRevealed = false }
                 onDelete()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.terracotta)
-                    .frame(width: 44, height: 44)
             }
-            .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.terracotta))
-            .accessibilityLabel("Delete \(habit.title)")
         }
-        .padding(.trailing, 4)
+        .padding(.trailing, 6)
         .opacity(currentOffset < -12 ? 1 : 0)
         .animation(cardSpring, value: isRevealed)
+    }
+
+    /// One labeled action chip: a soft tinted tile with the icon and its
+    /// word beneath, comfortably above the 44pt minimum target.
+    private func quickActionButton(
+        icon: String,
+        title: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(height: 18)
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(tint)
+            .frame(width: 50, height: 56)
+            .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(.stillTactileWave(accent: tint))
+        .accessibilityLabel("\(title) \(habit.title)")
     }
 
     // MARK: - Inline editor (swipe-to-edit)
@@ -1169,6 +1190,8 @@ struct HabitRowView: View {
                     if !isDoneToday { toggle() }
                 } else if translation < -actionsWidth * 0.5 {
                     withAnimation(cardSpring) { isRevealed = true }
+                    // First successful reveal retires the Today-list hint.
+                    UserDefaults.standard.set(true, forKey: HintFlags.learnedSwipeActions)
                 }
                 withAnimation(cardSpring) { dragOffset = 0 }
             }
