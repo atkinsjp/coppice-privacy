@@ -19,11 +19,14 @@ enum DesignSystem {
         /// Slightly elevated surface for cards and fields.
         static let card = Color(lightHex: "FDFCFA", darkHex: "252827")
 
-        /// Warm near-black / warm off-white text.
-        static let textPrimary = Color(lightHex: "3A3C38", darkHex: "E8E6E1")
+        /// Warm near-black / warm off-white text. Deepened in light mode so
+        /// habit titles stay firmly legible on the pale cards.
+        static let textPrimary = Color(lightHex: "2F312C", darkHex: "E8E6E1")
 
-        /// Muted stone gray for supporting text.
-        static let textSecondary = Color(lightHex: "9B998F", darkHex: "8D908B")
+        /// Muted stone gray for supporting text. Darkened in light mode — the
+        /// old value sat near 2.8:1 contrast on cards and read as faint;
+        /// lifted in dark mode for the same reason against charcoal.
+        static let textSecondary = Color(lightHex: "6E6D64", darkHex: "9A9D96")
 
         /// Deep matte charcoal for small text that must stay legible over the
         /// earthy wave background (weekday initials, dense micro-labels).
@@ -39,7 +42,7 @@ enum DesignSystem {
         static let sage = Color(lightHex: "8A9A86", darkHex: "A0B09C")
         static let terracotta = Color(lightHex: "C8826D", darkHex: "D89580")
         static let slateBlue = Color(lightHex: "7A8B99", darkHex: "94A8B8")
-        static let softOchre = Color(lightHex: "D8B08C", darkHex: "E4BE9C")
+        static let softOchre = Color(lightHex: "BC9266", darkHex: "E4BE9C")
     }
 
     // MARK: - Palette
