@@ -226,12 +226,18 @@ struct HabitRowView: View {
             // card collapses to nothing the moment the model goes away.
             if habit.isAlive {
                 swipeHint
-                quickActions
                 if isEditing {
                     inlineEditor
                 } else {
                     card
                 }
+                // The action chips render ABOVE the card. When they sat
+                // underneath, the offset card's tap region could still shadow
+                // them on device — every chip tap landed on the card and
+                // silently closed the reveal. Topmost + hit-testing gated on
+                // the reveal keeps them untouchable while hidden and
+                // unshadowable while shown.
+                quickActions
             }
         }
         .onAppear {
@@ -924,6 +930,7 @@ struct HabitRowView: View {
         }
         .padding(.trailing, 6)
         .opacity(currentOffset < -12 ? 1 : 0)
+        .allowsHitTesting(currentOffset < -12)
         .animation(cardSpring, value: isRevealed)
     }
 
