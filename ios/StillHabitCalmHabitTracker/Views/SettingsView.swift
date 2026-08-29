@@ -65,6 +65,7 @@ struct SettingsView: View {
                 syncSection
                 privacySection
                 supportSection
+                legalSection
                 eraseSection
 
                 if let countdown {
@@ -516,6 +517,19 @@ struct SettingsView: View {
         settingsGroup("SUPPORT") {
             actionRow(title: "Send Feedback", icon: "envelope") {
                 openFeedbackMail()
+            }
+        }
+    }
+
+    // MARK: - Legal
+
+    private var legalSection: some View {
+        settingsGroup("LEGAL") {
+            actionRow(title: "Privacy Policy", icon: "hand.raised") {
+                open("https://stillhabit.app/privacy")
+            }
+            actionRow(title: "Terms of Service", icon: "doc.text") {
+                open("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")
             }
         }
     }
