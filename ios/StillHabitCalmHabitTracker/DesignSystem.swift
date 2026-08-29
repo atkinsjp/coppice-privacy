@@ -40,9 +40,9 @@ enum DesignSystem {
         // Earth-toned accent palette — each lifted in dark mode to stay
         // calming yet readable against the deep charcoal background.
         static let sage = Color(lightHex: "8A9A86", darkHex: "A0B09C")
-        static let terracotta = Color(lightHex: "C8826D", darkHex: "D89580")
-        static let slateBlue = Color(lightHex: "7A8B99", darkHex: "94A8B8")
-        static let softOchre = Color(lightHex: "BC9266", darkHex: "E4BE9C")
+        static let terracotta = Color(lightHex: "B26550", darkHex: "D89580")
+        static let slateBlue = Color(lightHex: "5C6E7C", darkHex: "94A8B8")
+        static let softOchre = Color(lightHex: "9E7040", darkHex: "E4BE9C")
     }
 
     // MARK: - Palette
@@ -68,6 +68,35 @@ enum DesignSystem {
             return match.color
         }
         return Color(hex: hex)
+    }
+
+    /// Darker light-mode variants of the accent palette, used whenever a
+    /// habit's color carries TEXT or an icon glyph on a pale card. The pastel
+    /// palette reads around 2.5:1 on cream — pleasant for fills and tints, but
+    /// too faint for 13pt type. Keys are the canonical light-mode hexes.
+    private static let readableTextHex: [String: String] = [
+        "8A9A86": "5C6E58", // Sage
+        "C8826D": "A65844", // Terracotta
+        "7A8B99": "55677A", // Slate
+        "D8B08C": "9C6B3C", // Ochre
+        "B9908C": "8A5A56", // Dusty Rose
+        "6F7D65": "4C5A44", // Moss
+        "B08D6E": "7C5C3B", // Clay
+        "9A92A8": "66607E", // Lavender Ash
+        "5E7268": "41554A", // Pine
+        "A8A196": "6B655B", // Stone
+    ]
+
+    /// The text-safe variant of a habit color: a darkened tone in light mode
+    /// (roughly 4.5:1 on the card surface), the usual lifted tone in dark
+    /// mode. Falls back to the fill color for unknown legacy hexes.
+    static func habitTextColor(forHex hex: String) -> Color {
+        let all = palette + premiumPalette
+        if let match = all.first(where: { $0.hex.caseInsensitiveCompare(hex) == .orderedSame }),
+           let textHex = readableTextHex[match.hex] {
+            return Color(lightHex: textHex, darkHex: match.darkHex)
+        }
+        return habitColor(forHex: hex)
     }
 
     /// The only accent colors habits may use. Each entry carries a dark-mode

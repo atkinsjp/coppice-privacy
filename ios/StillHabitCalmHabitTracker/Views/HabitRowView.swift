@@ -122,6 +122,11 @@ struct HabitRowView: View {
     private let actionsWidth: CGFloat = 184
 
     private var accent: Color { DesignSystem.habitColor(forHex: habit.colorHex) }
+
+    /// The text-safe variant of the habit's accent — darkened in light mode so
+    /// glyph-bearing controls (quick-add pills, play/pause) stay legible on
+    /// the pale card while fills and tints keep the pastel character.
+    private var accentText: Color { DesignSystem.habitTextColor(forHex: habit.colorHex) }
     private var isDoneToday: Bool { habit.isCompleted(on: Date()) }
 
     private var habitType: HabitType { habit.type }
@@ -585,7 +590,7 @@ struct HabitRowView: View {
                 } label: {
                     Text("+\(ValueFormatter.wholeOrDecimal(step))")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isEffectivelyDone ? DesignSystem.Colors.onAccent : accent)
+                        .foregroundStyle(isEffectivelyDone ? DesignSystem.Colors.onAccent : accentText)
                         .padding(.horizontal, 10)
                         .frame(height: 30)
                         .background(
@@ -677,7 +682,7 @@ struct HabitRowView: View {
         } label: {
             Image(systemName: isTimerRunning ? "pause.fill" : "play.fill")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(isEffectivelyDone ? DesignSystem.Colors.onAccent : accent)
+                .foregroundStyle(isEffectivelyDone ? DesignSystem.Colors.onAccent : accentText)
                 .frame(width: 40, height: 40)
                 .background(
                     Group {
