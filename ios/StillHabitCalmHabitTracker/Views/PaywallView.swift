@@ -36,7 +36,7 @@ struct PaywallView: View {
     @State private var hasSettled = false
 
     private let termsURL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
-    private let privacyURL = "https://stillhabit.app/privacy"
+    private let privacyURL = "https://atkinsjp.github.io/rork-calm-habit-tracker/website/privacy-policy.html"
 
     // MARK: - Pricing
 
