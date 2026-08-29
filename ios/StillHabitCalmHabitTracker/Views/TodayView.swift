@@ -29,6 +29,12 @@ struct TodayView: View {
         allHabits.filter { $0.isAlive && $0.isScheduledForToday }
     }
 
+    /// Alive (non-deleted) habit count. Watched to detect when a brand-new
+    /// habit has just been created so it can be brought into view.
+    private var liveHabitCount: Int {
+        allHabits.filter { $0.isAlive }.count
+    }
+
     /// Everything the screen needs about today, derived in a single pass.
     ///
     /// Each of these used to be its own computed property, and SwiftUI reads
@@ -117,6 +123,11 @@ struct TodayView: View {
     /// is re-resolved from the live query on each render.
     @State private var route: TodayRoute?
     @State private var ambientPlayer = AmbientSoundPlayer()
+    /// Quiet footnote shown after a habit is created that does NOT run today
+    /// (a specific-days cadence) — without it the sheet closes and nothing on
+    /// screen changes, which reads as if the habit never saved.
+    @State private var offScheduleNote: String?
+    @State private var offScheduleNoteTask: Task<Void, Never>?
     /// Current sort mode for the Today list. Persists across launches.
     @AppStorage("stillhabit.sortMode") private var sortModeRaw: String = HabitSortMode.manual.rawValue
     /// Set automatically once the user swipes a card left for the first time
@@ -180,7 +191,11 @@ struct TodayView: View {
     var body: some View {
         let snapshot = makeSnapshot()
 
-        return ScrollView {
+        // The reader lets a just-created habit scroll itself into view — past
+        // ~4 cards the list fills the viewport and the new row lands below
+        // the fold, which made adding feel like nothing happened.
+        return ScrollViewReader { proxy in
+        ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 header(weekRatios: snapshot.weekRatios, habitCount: snapshot.habits.count)
 
@@ -191,6 +206,13 @@ struct TodayView: View {
 
                     if !didLearnSwipeActions {
                         swipeEducationHint
+                    }
+
+                    if let offScheduleNote {
+                        Text(offScheduleNote)
+                            .font(.system(size: 13))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .transition(.opacity)
                     }
 
                     LazyVStack(spacing: DesignSystem.Layout.rowSpacing) {
@@ -214,6 +236,7 @@ struct TodayView: View {
                                 }
                             )
                             .opacity(isStillMomentActive ? 0 : 1)
+                            .id(habit.id)
                         }
                     }
                 }
@@ -227,6 +250,7 @@ struct TodayView: View {
             .padding(.bottom, 96)
         }
         .animation(.easeInOut(duration: 0.35), value: didLearnSwipeActions)
+        .animation(.easeInOut(duration: 0.35), value: offScheduleNote)
         .scrollDisabled(isStillMomentActive)
         .background {
             // The backdrop's drift is a render-server animation now, not a
@@ -263,6 +287,7 @@ struct TodayView: View {
         .onDisappear {
             stillMomentTask?.cancel()
             proCelebrationTask?.cancel()
+            offScheduleNoteTask?.cancel()
         }
         .onChange(of: snapshot.allComplete) { oldValue, newValue in
             guard !oldValue, newValue else { return }
@@ -281,6 +306,41 @@ struct TodayView: View {
                 ambientPlayer.pause()
             @unknown default:
                 break
+            }
+        }
+        .onChange(of: liveHabitCount) { oldCount, newCount in
+            guard newCount > oldCount else { return }
+            handleHabitAppeared(proxy: proxy)
+        }
+        }
+    }
+
+    /// Brings a just-created habit into view. If it runs today, scroll to it
+    /// (new habits append at the bottom of the list); if its cadence starts on
+    /// a later weekday, show a quiet "starts Tuesday" note instead, since it
+    /// intentionally does not appear on today's list.
+    private func handleHabitAppeared(proxy: ScrollViewProxy) {
+        let live = allHabits.filter { $0.isAlive }
+        guard let newest = live.max(by: { $0.createdAt < $1.createdAt }) else { return }
+        if newest.isScheduledForToday {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                proxy.scrollTo(newest.id, anchor: .bottom)
+            }
+        } else if let day = newest.nextScheduledWeekdayName {
+            showOffScheduleNote("\(newest.title) starts \(day)")
+        }
+    }
+
+    private func showOffScheduleNote(_ note: String) {
+        offScheduleNoteTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.35)) {
+            offScheduleNote = note
+        }
+        offScheduleNoteTask = Task {
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.35)) {
+                offScheduleNote = nil
             }
         }
     }

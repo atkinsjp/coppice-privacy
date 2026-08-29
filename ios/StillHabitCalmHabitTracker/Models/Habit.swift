@@ -202,6 +202,19 @@ extension Habit {
         isScheduled(on: Date())
     }
 
+    /// The name of the next weekday this habit runs on, when it is not
+    /// scheduled today ("Tuesday"). nil when the habit runs today, or its
+    /// cadence is daily / weekly-target (always scheduled).
+    var nextScheduledWeekdayName: String? {
+        guard !isScheduledForToday else { return nil }
+        guard case .specificDays(let weekdays) = cadence else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.component(.weekday, from: Date())
+        let sorted = weekdays.sorted()
+        guard let next = sorted.first(where: { $0 > today }) ?? sorted.first else { return nil }
+        return calendar.weekdaySymbols[next - 1]
+    }
+
     /// Whether this habit carries a non-empty intentionality anchor (the
     /// "why"). Cards use this to decide whether to reserve space for the
     /// reflective reveal at all.

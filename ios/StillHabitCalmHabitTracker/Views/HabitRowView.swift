@@ -598,7 +598,11 @@ struct HabitRowView: View {
                                 if isEffectivelyDone {
                                     Capsule().fill(DesignSystem.Colors.onAccent.opacity(0.18))
                                 } else {
-                                    Capsule().fill(accent.opacity(0.14))
+                                    // 0.26 (not 0.14): the pastel palette at 14% over
+                                    // the near-white card reads as white for every
+                                    // color — the pill must visibly carry the habit's
+                                    // chosen accent.
+                                    Capsule().fill(accent.opacity(0.26))
                                 }
                             }
                         )
@@ -689,7 +693,8 @@ struct HabitRowView: View {
                         if isEffectivelyDone {
                             Circle().fill(DesignSystem.Colors.onAccent.opacity(0.18))
                         } else {
-                            Circle().fill(accent.opacity(0.14))
+                            // Same as the pills: 14% vanished on the pale card.
+                            Circle().fill(accent.opacity(0.26))
                         }
                     }
                 )
@@ -867,7 +872,7 @@ struct HabitRowView: View {
             ZStack(alignment: .leading) {
                 DesignSystem.Colors.card
                 GeometryReader { geo in
-                    accent.opacity(0.22)
+                    accent.opacity(0.28)
                         .frame(width: max(geo.size.width * habit.todayProgress, habit.todayProgress > 0 ? 4 : 0))
                 }
             }
