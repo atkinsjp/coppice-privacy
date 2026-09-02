@@ -419,13 +419,13 @@ struct TodayView: View {
                         .frame(width: 48, height: 48)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("StillHabit")
+                        Text("Coppice")
                             .font(.system(size: 36, weight: .bold, design: .rounded))
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
 
-                        Text("Calm Habit Tracker")
+                        Text("Habits that rest and regrow")
                             .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(DesignSystem.Colors.slateBlue)
                             .lineLimit(1)

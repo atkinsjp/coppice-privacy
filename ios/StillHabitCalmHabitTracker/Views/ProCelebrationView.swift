@@ -112,7 +112,7 @@ struct ProCelebrationView: View {
             hasBegun = true
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Welcome to StillHabitCalmHabitTracker Pro. Your quiet space is kept.")
+        .accessibilityLabel("Welcome to Coppice Pro. Your quiet space is kept.")
     }
 
     // MARK: - Ripple
@@ -166,7 +166,7 @@ struct ProCelebrationView: View {
                 .font(.system(size: 17, weight: .medium, design: .serif).italic())
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text("Welcome to StillHabitCalmHabitTracker Pro")
+            Text("Welcome to Coppice Pro")
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(1.6)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)

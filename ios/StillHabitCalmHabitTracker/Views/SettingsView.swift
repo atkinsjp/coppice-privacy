@@ -364,7 +364,7 @@ struct SettingsView: View {
     }
 
     private var accessStatusLine: String {
-        if store.isPremium { return "StillHabitCalmHabitTracker Pro — active" }
+        if store.isPremium { return "Coppice Pro — active" }
         if GracePeriod.isActive { return "Everything unlocked for now" }
         return "Free — three habits"
     }
@@ -382,7 +382,7 @@ struct SettingsView: View {
                 actionRow(title: "Sign Out", icon: "rectangle.portrait.and.arrow.right") {
                     account.signOut()
                 }
-                Text("Signing out removes Apple sign-in from StillHabitCalmHabitTracker on this device only.")
+                Text("Signing out removes Apple sign-in from Coppice on this device only.")
                     .font(.system(size: 12))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             } else {
@@ -500,7 +500,7 @@ struct SettingsView: View {
             }
             .accessibilityElement(children: .combine)
 
-            Text("When on, leaving Stillhabit hides every habit behind a quiet screen until your face (or device passcode) unlocks it.")
+            Text("When on, leaving Coppice hides every habit behind a quiet screen until your face (or device passcode) unlocks it.")
                 .font(.system(size: 12))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
         }
@@ -660,7 +660,7 @@ struct SettingsView: View {
         components.scheme = "mailto"
         components.path = feedbackAddress
         components.queryItems = [
-            URLQueryItem(name: "subject", value: "StillHabitCalmHabitTracker feedback")
+            URLQueryItem(name: "subject", value: "Coppice feedback")
         ]
         guard let url = components.url else { return }
         openURL(url)

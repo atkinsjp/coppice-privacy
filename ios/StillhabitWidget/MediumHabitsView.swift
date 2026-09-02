@@ -56,7 +56,7 @@ struct MediumHabitsView: View {
             Image(systemName: "leaf")
                 .font(.system(size: 18, weight: .light))
                 .foregroundStyle(WidgetDesign.sage)
-            Text("Begin a habit in Stillhabit")
+            Text("Begin a habit in Coppice")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(WidgetDesign.textSecondary)
         }

@@ -25,7 +25,7 @@ struct LockScreenView: View {
                 StillHabitLogoView(size: 96)
 
                 VStack(spacing: 10) {
-                    Text("Stillhabit")
+                    Text("Coppice")
                         .font(.system(size: 28, weight: .bold, design: .serif))
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
@@ -50,7 +50,7 @@ struct LockScreenView: View {
                     .background(DesignSystem.Colors.sage, in: Capsule())
                 }
                 .buttonStyle(.stillTactileWave(accent: DesignSystem.Colors.sage))
-                .accessibilityLabel("Unlock Stillhabit")
+                .accessibilityLabel("Unlock Coppice")
 
                 Spacer(minLength: 0)
             }

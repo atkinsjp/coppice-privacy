@@ -294,7 +294,7 @@ struct ReminderPicker: View {
                 }
             }
 
-            Text("Felt when the reminder arrives while StillHabitCalmHabitTracker is open, and when you open it from the nudge.")
+            Text("Felt when the reminder arrives while Coppice is open, and when you open it from the nudge.")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textSecondary.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
@@ -354,7 +354,7 @@ struct ReminderPicker: View {
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Notifications are off for StillHabitCalmHabitTracker, so this reminder won't arrive.")
+                Text("Notifications are off for Coppice, so this reminder won't arrive.")
                     .font(.system(size: 13))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
