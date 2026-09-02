@@ -1,0 +1,65 @@
+{
+  "theme": {
+    "style": "A misty woodland morning rendered as editorial paper: pale celadon and muted sage dissolving into warm cream, with faint dusty terracotta warmth at the horizon. Light is soft and diffused from the upper left, mist drifting in vertical bands, everything matte with fine paper grain and no hard edges. Calm, unhurried, tactile — like a well-printed journal left open on a windowsill. Backgrounds stay quiet so the serif headlines and the device breathe.",
+    "headlineFont": "font-family: 'Fraunces', serif — @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&display=swap')",
+    "headlineFontSize": 112,
+    "mockupIds": {
+      "iphone": "silver",
+      "ipad": "silver"
+    },
+    "palette": {
+      "primary": "#F2EADD",
+      "secondary": "#8FA58C",
+      "accent": "#C87B5C"
+    },
+    "layoutId": "hero-clipped"
+  },
+  "slides": [
+    {
+      "label": "Today List",
+      "backgroundPrompt": "Abstract digital art of a soft misty morning gradient, pale celadon green at the top dissolving through muted sage into warm cream at the base, with faint vertical bands of drifting mist. Diffused light enters from the upper left creating a gentle luminous haze, the upper third calm and even for text. Matte paper grain overlays the whole frame with subtle depth of field softness at the edges, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/44f74060-e84d-4222-88ed-1d4164b16629.png"
+    },
+    {
+      "label": "Add Habit",
+      "backgroundPrompt": "Abstract digital art with wide horizontal veils of soft sage green washing across warm cream, and a faint apricot-terracotta band glowing low near the bottom edge. Light is soft and lateral from the left, the top third left almost empty and pale for headline space. Fine matte paper grain and gentle blur at the outer corners give quiet tactile depth, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/6b4b337a-db59-4be9-ab0c-b3f117e56d2f.png"
+    },
+    {
+      "label": "Weekly Rhythm",
+      "backgroundPrompt": "Abstract digital art of a cool celadon green upper half dissolving cleanly into a warm cream lower half, split by a wide feathered horizon of mist. Slow vertical mist columns catch cool diffused daylight from above, the top region calm and desaturated. Subtle matte grain and layered translucent haze create airy depth, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/7a9d0fcc-adf6-4dcb-a636-416e7f24919f.png"
+    },
+    {
+      "label": "Month In Dots",
+      "backgroundPrompt": "Abstract digital art of a vast pale sage and cream expanse with generous empty space in the upper two thirds, and the faintest dusty terracotta warmth pooling along a low soft horizon. Light is flat and diffused, like overcast morning through linen, with no hard edges anywhere. Delicate paper grain and a whisper of mist give the flat field texture and quiet depth, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/aad7363d-1855-4982-918d-6e2df7858d7f.png"
+    },
+    {
+      "label": "Habit Detail",
+      "backgroundPrompt": "Abstract digital art of a warm cream field with a soft sage green wash drifting diagonally through the lower third like silk in still air. Diffused directional light from the upper left creates a slow luminous falloff, leaving the top calm and open. Matte paper grain, feathered translucent layers, and gentle edge blur build subtle tactile depth, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/5830db20-1221-4dad-9080-65c348ab6c70.png"
+    },
+    {
+      "label": "Coppice Moment",
+      "backgroundPrompt": "Abstract digital art of a warm amber-gold radial bloom expanding softly from the center over a sage and cream mist gradient, like last light glowing through linen. The glow is entirely edgeless, fading to cool pale sage in the calm upper region for text legibility. Fine matte grain, soft volumetric haze, and gentle vignetting create luminous depth, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/1db87b4d-0a0c-436c-97c1-0df7cd13b88c.png"
+    },
+    {
+      "label": "Reminders",
+      "backgroundPrompt": "Abstract digital art of a smooth vertical gradient from pale celadon through muted sage into warm cream, crossed by one faint horizontal band of dusty terracotta in the lower third. Soft diffused light from the upper left keeps the top quiet and even, mist thinning as it rises. Matte paper grain and delicate layered haze add restrained depth and premium softness, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/dbcb120d-655f-492e-ab11-005413b521d6.png"
+    }
+  ],
+  "headlines": {
+    "en": {
+      "Today List": "Habits That<br>Come Back",
+      "Add Habit": "Make Every<br>Habit Yours",
+      "Weekly Rhythm": "See Your<br>Weekly Rhythm",
+      "Month In Dots": "A Month<br>In Dots",
+      "Habit Detail": "Every Habit<br>Has A Why",
+      "Coppice Moment": "The Coppice<br>Moment",
+      "Reminders": "Nudges<br>That Whisper"
+    }
+  }
+}
