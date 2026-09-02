@@ -38,7 +38,7 @@ import SwiftUI
 /// The signature animated backdrop for the Today view.
 struct WavyBackgroundView: View {
     /// When true, a warm golden/ochre glow gently pulses and expands outward
-    /// over ~3 seconds — the visual half of the "Still Moment" reward that
+    /// over ~3 seconds — the visual half of the "Coppice Moment" reward that
     /// fires when every scheduled habit for the day is complete. The glow
     /// lives at the background layer (behind all content) so it never
     /// interferes with touch targets.
@@ -221,7 +221,7 @@ private struct DriftBlob: Identifiable {
 
 // MARK: - Warm glow pulse
 
-/// The visual "Still Moment" — a soft radial wash of warm golden/ochre light
+/// The visual "Coppice Moment" — a soft radial wash of warm golden/ochre light
 /// that blooms outward from the center over ~3 seconds, then fades back to
 /// let the earthy backdrop return to its resting state. Rendered inside the
 /// background layer so it stays behind all foreground content and never

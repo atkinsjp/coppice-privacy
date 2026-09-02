@@ -77,7 +77,7 @@ struct PaywallView: View {
     private let keepsakes: [String] = [
         "Preserve your 90-day completion history",
         "Keep your custom habit schedules and \u{201C}Why\u{201D} anchors",
-        "Maintain access to the \u{2018}Still Moment\u{2019} sensory rewards",
+        "Maintain access to the \u{2018}Coppice Moment\u{2019} sensory rewards",
         "Unlimited active habits",
     ]
 

@@ -2,7 +2,7 @@
 //  StillMomentService.swift
 //  StillHabitCalmHabitTracker
 //
-//  The "Still Moment" audio reward. When the user marks their final scheduled
+//  The "Coppice Moment" audio reward. When the user marks their final scheduled
 //  habit for the day complete, this service plays a soft, resonant chime that
 //  evokes a Tibetan singing bowl — a low fundamental layered with slightly
 //  inharmonic partials and a slow exponential decay, fading to silence over
@@ -27,7 +27,7 @@
 import Foundation
 import AudioToolbox
 
-/// Synthesizes and plays the soft "Still Moment" singing-bowl chime.
+/// Synthesizes and plays the soft "Coppice Moment" singing-bowl chime.
 ///
 /// A single shared instance owns the rendered WAV and its AudioToolbox sound
 /// ID, so the file is written exactly once per launch and never deleted while
@@ -59,7 +59,7 @@ final class StillMomentService {
     /// rendered or loaded, the call degrades to silence — it never aborts.
     func playChime() {
         guard ensureChimeSound() else { return }
-        CrashDiagnostics.note("still moment chime")
+        CrashDiagnostics.note("coppice moment chime")
         AudioServicesPlaySystemSound(cachedSoundID)
     }
 

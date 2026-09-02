@@ -5,7 +5,7 @@
 //  A soft, short chime that plays the instant any habit is marked complete —
 //  a gentle two-note whisper (a perfect fifth) with a quick exponential decay,
 //  fading to silence in under a second. It complements but never competes with
-//  the longer "Still Moment" singing-bowl reward that fires when the day's
+//  the longer "Coppice Moment" singing-bowl reward that fires when the day's
 //  final habit is completed.
 //
 //  IMPORTANT: Like StillMomentService, this deliberately avoids AVFoundation

@@ -138,7 +138,7 @@ struct TodayView: View {
         HabitSortMode(rawValue: sortModeRaw) ?? .manual
     }
 
-    /// The "Still Moment" audio + visual reward. Plays once when the day's
+    /// The "Coppice Moment" audio + visual reward. Plays once when the day's
     /// last scheduled habit flips to complete, and again only if the user
     /// later un-completes and re-completes everything.
     private let stillMomentService = StillMomentService.shared
@@ -146,9 +146,9 @@ struct TodayView: View {
     /// animated background and the centered completion message.
     @State private var isStillMomentActive = false
     /// The previous value of `allComplete` — used to detect the rising edge
-    /// (false → true) that triggers the Still Moment.
+    /// (false → true) that triggers the Coppice Moment.
     @State private var wasAllComplete = false
-    /// Cancellable task for the Still Moment celebration timer. Cancelled
+    /// Cancellable task for the Coppice Moment celebration timer. Cancelled
     /// when the view disappears so the animation state can't be mutated
     /// after the view is torn down.
     @State private var stillMomentTask: Task<Void, Never>?
@@ -715,9 +715,9 @@ struct TodayView: View {
         .padding(.top, 120)
     }
 
-    // MARK: - Still Moment
+    // MARK: - Coppice Moment
 
-    /// Fires the full "Still Moment" reward the instant the day crosses from
+    /// Fires the full "Coppice Moment" reward the instant the day crosses from
     /// incomplete to 100% complete: a soft singing-bowl chime, a warm
     /// golden/ochre glow blooming outward across the background, a calm
     /// double-tap heartbeat haptic, and the centered completion message.
@@ -725,11 +725,11 @@ struct TodayView: View {
     /// fade on their own, and the message and cards return as the visual
     /// settles back to the resting earthy state.
     private func triggerStillMoment() {
-        // The paywall promises the Still Moment as a Pro keepsake, so it stays
+        // The paywall promises the Coppice Moment as a Pro keepsake, so it stays
         // honest: once the grace window closes, the day still completes and
         // the progress bar still fills — the sensory reward simply rests.
         guard store.hasFullAccess else { return }
-        CrashDiagnostics.note("still moment")
+        CrashDiagnostics.note("coppice moment")
         stillMomentService.playChime()
         playHeartbeatHaptic()
         withAnimation(.easeInOut(duration: 0.8)) {
