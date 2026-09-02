@@ -526,7 +526,7 @@ struct SettingsView: View {
     private var legalSection: some View {
         settingsGroup("LEGAL") {
             actionRow(title: "Privacy Policy", icon: "hand.raised") {
-                open("https://atkinsjp.github.io/rork-calm-habit-tracker/website/privacy-policy.html")
+                open("https://atkinsjp.github.io/coppice-privacy/website/privacy-policy.html")
             }
             actionRow(title: "Terms of Service", icon: "doc.text") {
                 open("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")
