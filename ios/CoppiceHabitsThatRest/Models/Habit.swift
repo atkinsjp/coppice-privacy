@@ -171,6 +171,16 @@ final class Habit {
             : nil
         self.order = order
     }
+
+    /// The next free manual order value — one past the highest `order` in the
+    /// whole store, archived habits included. Appending by count instead would
+    /// collide after archiving (e.g. 4 habits, archive 2, add 1 → order 2
+    /// doubles an existing value and scrambles manual sorting), so archived
+    /// rows are always counted here.
+    static func nextOrder(in context: ModelContext) -> Int {
+        let habits = (try? context.fetch(FetchDescriptor<Habit>())) ?? []
+        return (habits.map(\.order).max() ?? -1) + 1
+    }
 }
 
 extension Habit {

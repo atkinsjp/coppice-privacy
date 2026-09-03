@@ -257,13 +257,10 @@ struct AddHabitView: View {
     }
 
     /// Computes the next manual order value so a newly created habit is
-    /// appended after all existing non-archived habits in the Today list.
+    /// appended after every habit in the Today list — archived ones included,
+    /// so the value can never collide with a live habit's `order`.
     private func nextHabitOrder() -> Int {
-        let descriptor = FetchDescriptor<Habit>(
-            predicate: #Predicate { !$0.isArchived }
-        )
-        let count = (try? modelContext.fetchCount(descriptor)) ?? 0
-        return count
+        Habit.nextOrder(in: modelContext)
     }
 
     /// Normalizes the chosen type so a numeric habit always has a positive

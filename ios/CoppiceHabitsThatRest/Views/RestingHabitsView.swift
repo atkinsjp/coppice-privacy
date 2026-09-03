@@ -78,6 +78,10 @@ struct RestingHabitsView: View {
                 guard habit.isAlive else { return }
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                     habit.isArchived = false
+                    // The restored habit kept its pre-archive `order`, which
+                    // may collide with a live habit's value — append it at
+                    // the end of the Today list instead.
+                    habit.order = Habit.nextOrder(in: modelContext)
                 }
                 try? modelContext.save()
                 SharedStore.notifyWidgets()
