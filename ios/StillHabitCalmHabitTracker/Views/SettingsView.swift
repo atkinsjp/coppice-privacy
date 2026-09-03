@@ -353,6 +353,21 @@ struct SettingsView: View {
 
             Divider().overlay(DesignSystem.Colors.textSecondary.opacity(0.15))
 
+            // Voluntary upgrade path — the only other way to reach the
+            // paywall besides the free-limit gate. Hidden for subscribers.
+            if !store.isPremium {
+                actionRow(title: "Coppice Pro", icon: "crown") {
+                    // The paywall is a full-screen cover owned by ContentView;
+                    // it can't present over this open sheet, so dismiss first
+                    // and raise the lock once the sheet has settled.
+                    dismiss()
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(650))
+                        store.isPaywallRequested = true
+                    }
+                }
+            }
+
             actionRow(title: "Manage Subscription", icon: "creditcard") {
                 open("https://apps.apple.com/account/subscriptions")
             }
