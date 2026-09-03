@@ -6,8 +6,8 @@
       "path": "ios",
       "framework": "swift",
       "settings": {
-        "iosBundleId": "com.atkinsmedia.stillhabit",
-        "displayName": "StillHabit: Calm Habit Tracker"
+        "displayName": "Coppice: Habits That Rest",
+        "iosBundleId": "com.atkinsmedia.stillhabit"
       }
     }
   ]
