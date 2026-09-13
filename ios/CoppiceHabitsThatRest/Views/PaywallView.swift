@@ -390,6 +390,17 @@ struct PaywallView: View {
             .disabled(store.isPurchasing || selectedPackage == nil)
             .opacity(selectedPackage == nil && !store.isLoading ? 0.55 : 1)
 
+            // Diagnoses the one silent failure mode: offerings loaded but no
+            // monthly/yearly package could be resolved, which previously left
+            // a disabled button and no explanation.
+            if store.packagesUnavailable {
+                Text("Plans are unavailable right now. Check your connection, or try Restore Purchases.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.terracotta)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+
             Text(renewalLine)
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)

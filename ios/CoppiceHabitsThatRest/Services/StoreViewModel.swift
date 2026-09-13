@@ -62,12 +62,28 @@ final class StoreViewModel {
         !isPremium && GracePeriod.isActive
     }
 
+    /// Monthly plan. Matches by package type first, then falls back to the
+    /// subscription period — a package created with a custom identifier in
+    /// RevenueCat still resolves instead of silently going nil.
     var monthlyPackage: Package? {
-        offerings?.current?.availablePackages.first { $0.packageType == .monthly }
+        guard let packages = offerings?.current?.availablePackages else { return nil }
+        return packages.first { $0.packageType == .monthly }
+            ?? packages.first { $0.storeProduct.subscriptionPeriod?.unit == .month }
     }
 
+    /// Yearly plan. Same matching strategy as `monthlyPackage`.
     var yearlyPackage: Package? {
-        offerings?.current?.availablePackages.first { $0.packageType == .annual }
+        guard let packages = offerings?.current?.availablePackages else { return nil }
+        return packages.first { $0.packageType == .annual }
+            ?? packages.first { $0.storeProduct.subscriptionPeriod?.unit == .year }
+    }
+
+    /// True when offerings loaded but neither plan could be resolved — the
+    /// paywall uses this to surface a hint instead of a silently dead button.
+    var packagesUnavailable: Bool {
+        !isLoading && offerings != nil
+            && monthlyPackage == nil
+            && yearlyPackage == nil
     }
 
     private func listenForUpdates() async {
@@ -81,7 +97,9 @@ final class StoreViewModel {
         isLoading = true
         do {
             offerings = try await Purchases.shared.offerings()
+            CrashDiagnostics.note("offerings: \(offerings?.current?.availablePackages.count ?? 0) packages")
         } catch {
+            CrashDiagnostics.note("offerings failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -89,6 +107,7 @@ final class StoreViewModel {
 
     func purchase(package: Package) async {
         guard !isPurchasing else { return }
+        CrashDiagnostics.note("purchase: \(package.storeProduct.productIdentifier)")
         isPurchasing = true
         do {
             let result = try await Purchases.shared.purchase(package: package)
